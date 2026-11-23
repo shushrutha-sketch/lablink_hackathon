@@ -13,16 +13,20 @@ export interface ComputedSlot {
   totalCapacity: number;
 }
 
-export function getEquipmentAvailability(equipmentId: number, dateStr: string): {
-  equipmentId: number;
+export function getEquipmentAvailability(equipmentId: number | string, dateStr: string): {
+  equipmentId: number | string;
   date: string;
   isOpen: boolean;
   slots: ComputedSlot[];
 } {
-  const equip = db.prepare('SELECT id, quantity, status FROM equipment WHERE id = ?').get(equipmentId) as any;
+  const isNum = !isNaN(Number(equipmentId));
+  const equip = db.prepare(`
+    SELECT id, quantity, status FROM equipment WHERE ${isNum ? 'id = ?' : 'slug = ?'}
+  `).get(isNum ? Number(equipmentId) : String(equipmentId)) as any;
   if (!equip) {
     throw new Error(`Equipment ${equipmentId} not found`);
   }
+  const actualId = equip.id;
 
   const [y, m, d] = dateStr.split('-').map(Number);
   const dateObj = new Date(y, m - 1, d);
@@ -63,7 +67,7 @@ export function getEquipmentAvailability(equipmentId: number, dateStr: string): 
       AND status IN ('approved', 'pending')
       AND start_time < ?
       AND end_time > ?
-  `).all(equipmentId, dayEnd, dayStart) as Array<{
+  `).all(actualId, dayEnd, dayStart) as Array<{
     id: number;
     start_time: string;
     end_time: string;

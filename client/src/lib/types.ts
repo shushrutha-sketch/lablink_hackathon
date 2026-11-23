@@ -16,21 +16,51 @@ export interface Department {
   name: string;
 }
 
+export interface EquipmentSpec {
+  name: string;
+  value: string;
+  raw?: any;
+}
+
+export interface EquipmentCapability {
+  name: string;
+  label: string;
+  description: string;
+  level: 'full' | 'partial';
+  limitation?: string | null;
+}
+
 export interface Equipment {
-  id: number;
+  id: number | string;
+  slug?: string;
   name: string;
   category: string;
-  department_id: number;
+  family?: string;
+  department_id?: number | string;
+  departmentId?: number | string;
   department_name?: string;
+  department?: string;
   department_code?: string;
+  departmentCode?: string;
+  lab?: string;
   location: string;
   description: string;
-  tags: string[];
-  specs: Record<string, string>;
+  tags?: string[];
+  specs?: EquipmentSpec[] | Record<string, string>;
+  topSpecs?: EquipmentSpec[];
+  compatible_projects?: string[];
+  compatibleProjects?: string[];
   quantity: number;
-  min_session_minutes: number;
-  max_session_minutes: number;
-  status: 'active' | 'maintenance' | 'retired';
+  availableQuantity?: number;
+  min_session_minutes?: number;
+  max_session_minutes?: number;
+  status: 'available' | 'in_use' | 'active' | 'maintenance' | 'retired';
+  nextFreeAt?: string | null;
+  imageUrl?: string | null;
+  imageAlt?: string;
+  imageCredit?: string;
+  capabilities?: EquipmentCapability[];
+  isDemo?: boolean;
   matchPercentage?: number;
   matchedCapabilities?: string[];
 }

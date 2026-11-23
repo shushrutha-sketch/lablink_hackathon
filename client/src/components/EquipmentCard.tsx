@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Equipment } from '../lib/types.js';
-import { StatusBadge } from './StatusBadge.js';
-import { MapPin, Layers, Clock, Cpu, ArrowRight } from 'lucide-react';
+import { ImageWithFallback } from './ImageWithFallback.js';
+import { CheckCircle2, Clock, AlertTriangle, ArrowRight, Layers, MapPin, Sparkles } from 'lucide-react';
 
 interface EquipmentCardProps {
   equipment: Equipment;
@@ -12,105 +12,179 @@ interface EquipmentCardProps {
 export const EquipmentCard: React.FC<EquipmentCardProps> = ({ equipment, highlightMatch = false }) => {
   const {
     id,
+    slug,
     name,
     category,
+    department,
     department_name,
+    departmentCode,
+    department_code,
+    lab,
     location,
     description,
-    tags = [],
-    specs = {},
-    quantity,
-    min_session_minutes,
-    max_session_minutes,
+    specs = [],
+    topSpecs = [],
+    compatibleProjects = [],
+    compatible_projects = [],
     status,
+    nextFreeAt,
+    imageUrl,
+    imageAlt,
+    isDemo,
     matchPercentage,
   } = equipment;
 
-  const specKeys = Object.keys(specs).slice(0, 2);
+  const deptDisplay = department || department_name || departmentCode || department_code || 'Engineering';
+  const targetId = slug || id;
+
+  // Format top specs
+  const displayedSpecs = Array.isArray(topSpecs) && topSpecs.length > 0
+    ? topSpecs
+    : Array.isArray(specs)
+    ? specs.slice(0, 3)
+    : typeof specs === 'object' && specs !== null
+    ? Object.entries(specs).slice(0, 3).map(([name, value]) => ({ name, value: String(value) }))
+    : [];
+
+  const projects = (compatibleProjects.length > 0 ? compatibleProjects : compatible_projects).slice(0, 3);
+
+  const renderStatusChip = () => {
+    if (status === 'maintenance') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-600 border border-rose-200">
+          <AlertTriangle className="w-3 h-3 text-rose-500" />
+          Maintenance
+        </span>
+      );
+    }
+
+    if (status === 'in_use') {
+      let timeStr = '';
+      if (nextFreeAt) {
+        try {
+          const date = new Date(nextFreeAt);
+          timeStr = `until ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        } catch {
+          // ignore date parse error
+        }
+      }
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 border border-amber-200">
+          <Clock className="w-3 h-3 text-amber-500" />
+          In Use {timeStr}
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 border border-emerald-200">
+        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+        Available Now
+      </span>
+    );
+  };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 hover:border-brand-300 hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group">
-      <div className="p-5 space-y-3">
-        {/* Top badges */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
-            {department_name || 'Engineering'}
-          </span>
-          <div className="flex items-center gap-2">
-            {matchPercentage !== undefined && (
-              <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                {matchPercentage}% Match
+    <div className="bg-white rounded-2xl border border-slate-200 hover:border-electric-300 hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden group">
+      <div>
+        {/* Visual Equipment Photograph */}
+        <div className="relative">
+          <ImageWithFallback
+            src={imageUrl}
+            alt={imageAlt || name}
+            category={category}
+          />
+          {/* Top Overlays */}
+          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 items-center">
+            <span className="text-[10px] font-bold tracking-wider uppercase bg-navy-950/80 backdrop-blur text-white px-2.5 py-0.5 rounded-full border border-white/10">
+              {deptDisplay}
+            </span>
+            {isDemo && (
+              <span className="text-[10px] font-semibold bg-electric-600/90 text-white px-2 py-0.5 rounded-full backdrop-blur shadow-sm">
+                Verified
               </span>
             )}
-            <StatusBadge status={status} />
+          </div>
+
+          <div className="absolute bottom-3 right-3">
+            {renderStatusChip()}
           </div>
         </div>
 
-        {/* Title & Category */}
-        <div>
-          <h3 className="font-bold text-slate-900 text-base group-hover:text-brand-600 transition-colors line-clamp-2">
-            {name}
-          </h3>
-          <p className="text-xs font-medium text-slate-500 mt-0.5 flex items-center gap-1.5">
-            <Layers className="w-3 h-3 text-slate-400" />
-            {category}
-          </p>
-        </div>
-
-        {/* Description */}
-        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-          {description}
-        </p>
-
-        {/* Specs highlight */}
-        {specKeys.length > 0 && (
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 grid grid-cols-2 gap-2 text-[11px]">
-            {specKeys.map(k => (
-              <div key={k} className="truncate">
-                <span className="text-slate-400 font-medium">{k}: </span>
-                <span className="font-semibold text-slate-700">{specs[k]}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1">
-          {tags.slice(0, 4).map(tag => (
-            <span
-              key={tag}
-              className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded"
+        {/* Card Body */}
+        <div className="p-5 space-y-3.5">
+          {/* Category & Title */}
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 font-medium mb-1">
+              <span className="flex items-center gap-1">
+                <Layers className="w-3 h-3 text-electric-600" />
+                {category}
+              </span>
+              {matchPercentage !== undefined && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ai-700 bg-ai-50 px-2 py-0.5 rounded-full border border-ai-200">
+                  <Sparkles className="w-3 h-3 text-ai-600" />
+                  {matchPercentage}% Match
+                </span>
+              )}
+            </div>
+            <Link
+              to={`/equipment/${targetId}`}
+              className="block group-hover:text-electric-600 transition-colors"
             >
-              #{tag}
-            </span>
-          ))}
-          {tags.length > 4 && (
-            <span className="text-[10px] text-slate-400 px-1 py-0.5">
-              +{tags.length - 4} more
-            </span>
+              <h3 className="font-heading font-bold text-slate-900 text-base leading-snug line-clamp-1">
+                {name}
+              </h3>
+            </Link>
+          </div>
+
+          {/* Description */}
+          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+            {description}
+          </p>
+
+          {/* Specifications Highlight Pills */}
+          {displayedSpecs.length > 0 && (
+            <div className="grid grid-cols-1 gap-1.5 py-1">
+              {displayedSpecs.map((spec, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between text-[11px] bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100"
+                >
+                  <span className="text-slate-500 font-medium truncate">{spec.name}</span>
+                  <span className="font-semibold text-slate-800 shrink-0 ml-2">{spec.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Compatible Projects Tags */}
+          {projects.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {projects.map((proj, i) => (
+                <span
+                  key={i}
+                  className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
+                >
+                  #{proj}
+                </span>
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Bottom Footer */}
-      <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-        <div className="flex flex-col gap-0.5 text-slate-500">
-          <span className="flex items-center gap-1 text-[11px] truncate max-w-[150px]">
-            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-            {location}
-          </span>
-          <span className="flex items-center gap-1 text-[10px] text-slate-400">
-            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-            {min_session_minutes}-{max_session_minutes} min sessions • {quantity} unit(s)
-          </span>
+      {/* Card Footer */}
+      <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2 mt-2">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 truncate">
+          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className="truncate">{lab || location}</span>
         </div>
-
         <Link
-          to={`/equipment/${id}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-xs shadow-xs transition-colors"
+          to={`/equipment/${targetId}`}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-electric-600 hover:text-electric-700 shrink-0 group/btn"
         >
-          View & Book
-          <ArrowRight className="w-3 h-3" />
+          Book
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-0.5" />
         </Link>
       </div>
     </div>
