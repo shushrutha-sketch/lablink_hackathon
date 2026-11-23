@@ -17,7 +17,8 @@ router.get('/faculty/requests', authenticate, requireRole('faculty', 'admin'), (
     let query = `
       SELECT r.*, u.name as student_name, u.email as student_email,
              e.name as equipment_name, e.category as equipment_category, e.location as equipment_location,
-             e.quantity as equipment_quantity, d.name as department_name, d.code as department_code
+             e.quantity as equipment_quantity, e.image_path, e.image_alt,
+             d.name as department_name, d.code as department_code
       FROM booking_requests r
       JOIN users u ON r.student_id = u.id
       JOIN equipment e ON r.equipment_id = e.id
@@ -41,11 +42,20 @@ router.get('/faculty/requests', authenticate, requireRole('faculty', 'admin'), (
 
     const rows = db.prepare(query).all(...params) as any[];
 
-    const requests = rows.map(r => ({
-      ...r,
-      required_capabilities: JSON.parse(r.required_capabilities || '[]'),
-      score_breakdown: r.score_breakdown ? JSON.parse(r.score_breakdown) : null,
-    }));
+    const requests = rows.map(r => {
+      const imageUrl = r.image_path
+        ? (r.image_path.startsWith('/') || r.image_path.startsWith('http')
+            ? r.image_path
+            : `/media/equipment/${r.image_path}`)
+        : null;
+
+      return {
+        ...r,
+        imageUrl,
+        requirements_json: r.requirements_json ? JSON.parse(r.requirements_json) : [],
+        score_breakdown: r.score_breakdown ? JSON.parse(r.score_breakdown) : null,
+      };
+    });
 
     res.json({ requests });
   } catch (err) {
@@ -60,14 +70,14 @@ router.get('/faculty/requests/:id/allocation', authenticate, requireRole('facult
     const analysis = analyzeRequestAllocation(id);
 
     // If Gemini API is configured and there's a conflict, optionally generate an AI explanation
-    if (analysis.conflicts && process.env.GEMINI_API_KEY) {
+    if (analysis.conflicts && process.env.GEMINI_API_KEY && process.env.DEMO_FORCE_BASIC !== 'true') {
       try {
         const aiNarrative = await generateAllocationNarrative(analysis);
         if (aiNarrative) {
           analysis.explanation = aiNarrative;
           analysis.explanationSource = 'gemini';
         }
-      } catch (e) {
+      } catch {
         // preserve rule-based explanation
       }
     }
@@ -102,7 +112,7 @@ router.post('/faculty/requests/:id/decision', authenticate, requireRole('faculty
       return res.json(result);
     } else {
       return res.status(400).json({
-        error: { code: 'INVALID_ACTION', message: 'Action must be approve, reject, or request_changes' },
+        error: { code: 'INVALID_ACTION', message: 'Invalid action specified' },
       });
     }
   } catch (err) {

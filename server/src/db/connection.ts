@@ -37,20 +37,23 @@ class DBWrapper {
     };
   }
 
-  transaction<T>(fn: () => T): T {
-    this.db.exec('BEGIN TRANSACTION;');
-    try {
-      const result = fn();
-      this.db.exec('COMMIT;');
-      return result;
-    } catch (err) {
+  transaction<T extends (...args: any[]) => any>(fn: T): T {
+    const wrapped = ((...args: any[]) => {
+      this.db.exec('BEGIN TRANSACTION;');
       try {
-        this.db.exec('ROLLBACK;');
-      } catch (rollbackErr) {
-        // ignore rollback error if already aborted
+        const result = fn(...args);
+        this.db.exec('COMMIT;');
+        return result;
+      } catch (err) {
+        try {
+          this.db.exec('ROLLBACK;');
+        } catch {
+          // ignore rollback error if already aborted
+        }
+        throw err;
       }
-      throw err;
-    }
+    }) as T;
+    return wrapped;
   }
 
   close() {

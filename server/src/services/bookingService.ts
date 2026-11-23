@@ -1,20 +1,28 @@
 import { db } from '../db/connection.js';
 import { isWithinLabHours, getDurationMinutes, getDaysUntil } from '../domain/timeUtils.js';
-import { calculatePriorityScore } from './scoringService.js';
-import { EquipmentRow, BookingRequestRow } from '../domain/types.js';
+import { calculateFairAllocationScore, rankCompetingRequests, CompetingRequestCandidate } from './scoringService.js';
+import { BookingRequestRow } from '../domain/types.js';
 
 export interface CreateRequestInput {
-  equipmentId: number;
+  equipmentId: number | string;
   projectTitle: string;
   projectDescription: string;
   projectDeadline: string; // YYYY-MM-DD
   startTime: string;      // YYYY-MM-DDTHH:mm
   endTime: string;        // YYYY-MM-DDTHH:mm
   requiredCapabilities?: string[];
+  requirementsJson?: string;
+  substitutedFromEquipmentId?: number | string;
+  substitutionNote?: string;
+  substitutionAcknowledged?: boolean | number;
 }
 
 export function createBookingRequest(studentId: number, input: CreateRequestInput) {
-  const equip = db.prepare('SELECT * FROM equipment WHERE id = ?').get(input.equipmentId) as EquipmentRow | undefined;
+  const isNum = !isNaN(Number(input.equipmentId));
+  const equip = db.prepare(`
+    SELECT * FROM equipment WHERE ${isNum ? 'id = ?' : 'slug = ?'}
+  `).get(isNum ? Number(input.equipmentId) : String(input.equipmentId)) as any;
+
   if (!equip) {
     throw { statusCode: 404, code: 'NOT_FOUND', message: 'Equipment not found' };
   }
@@ -57,7 +65,7 @@ export function createBookingRequest(studentId: number, input: CreateRequestInpu
       AND status = 'approved'
       AND start_time < ?
       AND end_time > ?
-  `).get(input.equipmentId, input.endTime, input.startTime) as { count: number };
+  `).get(equip.id, input.endTime, input.startTime) as { count: number };
 
   if (confirmedOverlaps.count >= equip.quantity) {
     throw {
@@ -82,41 +90,67 @@ export function createBookingRequest(studentId: number, input: CreateRequestInpu
   }
   const pastAllocatedHours = Math.round((pastAllocatedMinutes / 60) * 10) / 10;
 
-  const equipTags: string[] = JSON.parse(equip.tags || '[]');
-  const requiredCaps = input.requiredCapabilities || [];
+  // Equipment capabilities
+  const equipCaps = db.prepare(`
+    SELECT capability FROM equipment_capabilities WHERE equipment_id = ?
+  `).all(equip.id).map((r: any) => r.capability);
 
-  const breakdown = calculatePriorityScore({
+  const requiredCaps = input.requiredCapabilities || [];
+  let structuredReqs: any[] | undefined = undefined;
+  if (input.requirementsJson) {
+    try {
+      structuredReqs = JSON.parse(input.requirementsJson);
+    } catch {
+      // ignore
+    }
+  }
+
+  const scoreBreakdown = calculateFairAllocationScore({
     deadlineDays,
+    requirements: structuredReqs,
     requiredCapabilities: requiredCaps,
-    equipmentTags: equipTags,
-    pastAllocatedHours,
+    equipmentCapabilities: equipCaps,
+    approvedHoursLast30Days: pastAllocatedHours,
+    daysWaiting: 0,
     durationMinutes: duration,
     minSessionMinutes: equip.min_session_minutes,
     maxSessionMinutes: equip.max_session_minutes,
   });
 
-  const suitability = breakdown.suitability / 100;
-
   const insertStmt = db.prepare(`
     INSERT INTO booking_requests (
       student_id, equipment_id, project_title, project_description, project_deadline,
-      start_time, end_time, status, required_capabilities, suitability, priority_score,
-      score_breakdown
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+      start_time, end_time, status, origin, requirements_json,
+      substituted_from_equipment_id, substitution_note, substitution_acknowledged,
+      priority_score, score_breakdown
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'form', ?, ?, ?, ?, ?, ?)
   `);
+
+  let subFromId: number | null = null;
+  if (input.substitutedFromEquipmentId) {
+    const isSubNum = !isNaN(Number(input.substitutedFromEquipmentId));
+    const subEquip = db.prepare(`
+      SELECT id FROM equipment WHERE ${isSubNum ? 'id = ?' : 'slug = ?'}
+    `).get(isSubNum ? Number(input.substitutedFromEquipmentId) : String(input.substitutedFromEquipmentId)) as any;
+    if (subEquip) subFromId = subEquip.id;
+  }
+
+  const reqJson = input.requirementsJson || JSON.stringify(requiredCaps);
 
   const result = insertStmt.run(
     studentId,
-    input.equipmentId,
+    equip.id,
     input.projectTitle,
     input.projectDescription,
     input.projectDeadline,
     input.startTime,
     input.endTime,
-    JSON.stringify(requiredCaps),
-    suitability,
-    breakdown.total,
-    JSON.stringify(breakdown)
+    reqJson,
+    subFromId,
+    input.substitutionNote || null,
+    input.substitutionAcknowledged ? 1 : 0,
+    scoreBreakdown.total,
+    JSON.stringify(scoreBreakdown)
   );
 
   db.prepare(`
@@ -126,13 +160,13 @@ export function createBookingRequest(studentId: number, input: CreateRequestInpu
 
   return {
     id: result.lastInsertRowid,
-    priorityScore: breakdown.total,
-    scoreBreakdown: breakdown,
+    priorityScore: scoreBreakdown.total,
+    scoreBreakdown,
   };
 }
 
 export function editBookingRequest(requestId: number, studentId: number, input: Partial<CreateRequestInput>) {
-  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as BookingRequestRow | undefined;
+  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as any;
   if (!req) {
     throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
   }
@@ -152,7 +186,8 @@ export function editBookingRequest(requestId: number, studentId: number, input: 
   const newEnd = input.endTime ?? req.end_time;
   const equipId = input.equipmentId ?? req.equipment_id;
 
-  const equip = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equipId) as EquipmentRow | undefined;
+  const isNum = !isNaN(Number(equipId));
+  const equip = db.prepare(`SELECT * FROM equipment WHERE ${isNum ? 'id = ?' : 'slug = ?'}`).get(isNum ? Number(equipId) : String(equipId)) as any;
   if (!equip) throw { statusCode: 404, code: 'NOT_FOUND', message: 'Equipment not found' };
 
   if (input.startTime || input.endTime) {
@@ -171,7 +206,7 @@ export function editBookingRequest(requestId: number, studentId: number, input: 
         start_time = ?, end_time = ?, equipment_id = ?, status = 'pending',
         updated_at = datetime('now')
     WHERE id = ?
-  `).run(newTitle, newDesc, newDeadline, newStart, newEnd, equipId, requestId);
+  `).run(newTitle, newDesc, newDeadline, newStart, newEnd, equip.id, requestId);
 
   db.prepare(`
     INSERT INTO audit_log (actor_id, action, entity, entity_id, detail)
@@ -182,7 +217,7 @@ export function editBookingRequest(requestId: number, studentId: number, input: 
 }
 
 export function cancelBookingRequest(requestId: number, studentId: number) {
-  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as BookingRequestRow | undefined;
+  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as any;
   if (!req) {
     throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
   }
@@ -210,23 +245,82 @@ export function cancelBookingRequest(requestId: number, studentId: number) {
 }
 
 /**
- * Approve booking atomically inside database transaction
+ * Approve booking atomically inside database transaction with mandatory override reason check
  */
 export function approveBookingRequest(requestId: number, reviewerId: number, comment?: string) {
+  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as any;
+  if (!req) {
+    throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
+  }
+
+  if (req.status === 'approved') {
+    return { success: true, message: 'Request is already approved' };
+  }
+
+  const equip = db.prepare('SELECT * FROM equipment WHERE id = ?').get(req.equipment_id) as any;
+  if (!equip) throw { statusCode: 404, code: 'NOT_FOUND', message: 'Equipment not found' };
+
+  // Check competing pending requests that overlap in time
+  const competingRows = db.prepare(`
+    SELECT r.*, u.name as student_name
+    FROM booking_requests r
+    JOIN users u ON r.student_id = u.id
+    WHERE r.equipment_id = ?
+      AND r.status = 'pending'
+      AND r.start_time < ?
+      AND r.end_time > ?
+    ORDER BY r.created_at ASC
+  `).all(req.equipment_id, req.end_time, req.start_time) as any[];
+
+  if (competingRows.length > 0) {
+    const candidates: CompetingRequestCandidate[] = competingRows.map(c => {
+      // past hours
+      const pastBookings = db.prepare(`
+        SELECT start_time, end_time
+        FROM booking_requests
+        WHERE student_id = ? AND status = 'approved'
+          AND datetime(start_time) >= datetime('now', '-30 days')
+      `).all(c.student_id) as any[];
+
+      let pastMinutes = 0;
+      for (const b of pastBookings) {
+        pastMinutes += getDurationMinutes(b.start_time, b.end_time);
+      }
+
+      return {
+        id: c.id,
+        studentId: c.student_id,
+        studentName: c.student_name,
+        projectTitle: c.project_title,
+        projectDeadline: c.project_deadline,
+        startTime: c.start_time,
+        endTime: c.end_time,
+        durationMinutes: getDurationMinutes(c.start_time, c.end_time),
+        approvedHoursLast30Days: Math.round((pastMinutes / 60) * 10) / 10,
+        createdAt: c.created_at,
+        minSessionMinutes: equip.min_session_minutes,
+        maxSessionMinutes: equip.max_session_minutes,
+      };
+    });
+
+    const ranked = rankCompetingRequests(candidates, equip.quantity);
+    const thisItem = ranked.find(r => r.id === requestId);
+
+    if (thisItem && thisItem.recommendation !== 'approve') {
+      // Faculty is approving a request that was NOT recommended for approval by the allocation engine!
+      if (!comment || comment.trim().length === 0) {
+        throw {
+          statusCode: 400,
+          code: 'OVERRIDE_REASON_REQUIRED',
+          message: 'An override reason is mandatory when approving a request that is not the engine\'s top recommendation.',
+        };
+      }
+    }
+  }
+
+  // Atomic SQLite transaction
   return db.transaction(() => {
-    const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as BookingRequestRow | undefined;
-    if (!req) {
-      throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
-    }
-
-    if (req.status === 'approved') {
-      return { success: true, message: 'Request is already approved' };
-    }
-
-    const equip = db.prepare('SELECT * FROM equipment WHERE id = ?').get(req.equipment_id) as EquipmentRow | undefined;
-    if (!equip) throw { statusCode: 404, code: 'NOT_FOUND', message: 'Equipment not found' };
-
-    // Strict double-booking check inside the transaction
+    // Double-booking check inside transaction
     const confirmed = db.prepare(`
       SELECT count(*) as count
       FROM booking_requests
@@ -250,6 +344,7 @@ export function approveBookingRequest(requestId: number, reviewerId: number, com
       SET status = 'approved',
           reviewer_id = ?,
           reviewer_comment = ?,
+          decided_at = datetime('now'),
           updated_at = datetime('now')
       WHERE id = ?
     `).run(reviewerId, comment || 'Approved by faculty reviewer', requestId);
@@ -260,7 +355,7 @@ export function approveBookingRequest(requestId: number, reviewerId: number, com
     `).run(reviewerId, requestId, comment || 'Approved by faculty reviewer');
 
     return { success: true, message: 'Request approved successfully' };
-  });
+  })();
 }
 
 export function rejectBookingRequest(requestId: number, reviewerId: number, comment: string) {
@@ -268,7 +363,7 @@ export function rejectBookingRequest(requestId: number, reviewerId: number, comm
     throw { statusCode: 400, code: 'COMMENT_REQUIRED', message: 'A reason must be provided when rejecting a request.' };
   }
 
-  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as BookingRequestRow | undefined;
+  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as any;
   if (!req) throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
 
   db.prepare(`
@@ -276,6 +371,7 @@ export function rejectBookingRequest(requestId: number, reviewerId: number, comm
     SET status = 'rejected',
         reviewer_id = ?,
         reviewer_comment = ?,
+        decided_at = datetime('now'),
         updated_at = datetime('now')
     WHERE id = ?
   `).run(reviewerId, comment, requestId);
@@ -293,7 +389,7 @@ export function requestChanges(requestId: number, reviewerId: number, comment: s
     throw { statusCode: 400, code: 'COMMENT_REQUIRED', message: 'Instructions for requested changes must be provided.' };
   }
 
-  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as BookingRequestRow | undefined;
+  const req = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(requestId) as any;
   if (!req) throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
 
   db.prepare(`
@@ -301,6 +397,7 @@ export function requestChanges(requestId: number, reviewerId: number, comment: s
     SET status = 'changes_requested',
         reviewer_id = ?,
         reviewer_comment = ?,
+        decided_at = datetime('now'),
         updated_at = datetime('now')
     WHERE id = ?
   `).run(reviewerId, comment, requestId);

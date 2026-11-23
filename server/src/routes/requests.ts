@@ -18,6 +18,10 @@ router.post('/requests', authenticate, requireRole('student', 'faculty', 'admin'
       startTime,
       endTime,
       requiredCapabilities,
+      requirementsJson,
+      substitutedFromEquipmentId,
+      substitutionNote,
+      substitutionAcknowledged,
     } = req.body;
 
     if (!equipmentId || !projectTitle || !projectDescription || !projectDeadline || !startTime || !endTime) {
@@ -27,13 +31,17 @@ router.post('/requests', authenticate, requireRole('student', 'faculty', 'admin'
     }
 
     const result = createBookingRequest(req.user!.id, {
-      equipmentId: Number(equipmentId),
+      equipmentId,
       projectTitle,
       projectDescription,
       projectDeadline,
       startTime,
       endTime,
       requiredCapabilities: Array.isArray(requiredCapabilities) ? requiredCapabilities : [],
+      requirementsJson,
+      substitutedFromEquipmentId,
+      substitutionNote,
+      substitutionAcknowledged,
     });
 
     res.status(201).json({
@@ -52,8 +60,8 @@ router.get('/requests/mine', authenticate, requireRole('student', 'faculty', 'ad
 
     const rows = db.prepare(`
       SELECT r.*, e.name as equipment_name, e.category as equipment_category,
-             e.location as equipment_location, d.name as department_name,
-             u.name as reviewer_name
+             e.location as equipment_location, e.image_path, e.image_alt,
+             d.name as department_name, u.name as reviewer_name
       FROM booking_requests r
       JOIN equipment e ON r.equipment_id = e.id
       JOIN departments d ON e.department_id = d.id
@@ -71,14 +79,21 @@ router.get('/requests/mine', authenticate, requireRole('student', 'faculty', 'ad
           if (allocation.conflicts && allocation.winnerRequestId !== r.id) {
             alternatives = allocation.alternatives;
           }
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
 
+      const imageUrl = r.image_path
+        ? (r.image_path.startsWith('/') || r.image_path.startsWith('http')
+            ? r.image_path
+            : `/media/equipment/${r.image_path}`)
+        : null;
+
       return {
         ...r,
-        required_capabilities: JSON.parse(r.required_capabilities || '[]'),
+        imageUrl,
+        requirements_json: r.requirements_json ? JSON.parse(r.requirements_json) : [],
         score_breakdown: r.score_breakdown ? JSON.parse(r.score_breakdown) : null,
         alternatives,
       };
@@ -102,7 +117,7 @@ router.patch('/requests/:id', authenticate, (req, res, next) => {
 });
 
 // Student cancels own request
-router.post('/requests/:id/cancel', authenticate, (req, res, next) => {
+router.delete('/requests/:id', authenticate, (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const result = cancelBookingRequest(id, req.user!.id);

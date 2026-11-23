@@ -11,6 +11,7 @@ import discoveryRoutes from './routes/discovery.js';
 import requestsRoutes from './routes/requests.js';
 import facultyRoutes from './routes/faculty.js';
 import adminRoutes from './routes/admin.js';
+import matchmakerRoutes from './routes/matchmaker.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -55,6 +56,7 @@ app.use('/api', discoveryRoutes);
 app.use('/api', requestsRoutes);
 app.use('/api', facultyRoutes);
 app.use('/api', adminRoutes);
+app.use('/api/matchmaker', matchmakerRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

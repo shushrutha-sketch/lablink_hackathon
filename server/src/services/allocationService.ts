@@ -1,8 +1,8 @@
 import { db } from '../db/connection.js';
-import { BookingRequestRow, EquipmentRow } from '../domain/types.js';
-import { calculatePriorityScore } from './scoringService.js';
-import { getDurationMinutes, getDaysUntil, addDays } from '../domain/timeUtils.js';
+import { rankCompetingRequests, CompetingRequestCandidate, RankedCompetingRequest } from './scoringService.js';
+import { getDurationMinutes, addDays } from '../domain/timeUtils.js';
 import { getEquipmentAvailability } from './availabilityService.js';
+import { findEquipmentSubstitutes } from './substitutionService.js';
 
 export interface AlternativeSlot {
   date: string;
@@ -10,28 +10,21 @@ export interface AlternativeSlot {
   end_time: string;
 }
 
-export interface AlternativeEquipment {
-  id: number;
-  name: string;
-  category: string;
-  department_name: string;
-  location: string;
-  matchPercentage: number;
-}
-
 export interface AllocationAnalysis {
   conflicts: boolean;
   totalCompetitors: number;
   winnerRequestId: number | null;
+  ranking: RankedCompetingRequest[];
   competitors: Array<{
     request: any;
-    score: number;
-    breakdown: any;
+    score: any;
+    rank: number;
+    recommendation: 'approve' | 'alternative';
     isWinner: boolean;
   }>;
   alternatives: {
     alternativeSlots: AlternativeSlot[];
-    alternativeEquipment: AlternativeEquipment[];
+    alternativeEquipment: any[];
   };
   explanation: string;
   explanationSource: 'gemini' | 'rule_based';
@@ -40,8 +33,8 @@ export interface AllocationAnalysis {
 export function analyzeRequestAllocation(requestId: number): AllocationAnalysis {
   const req = db.prepare(`
     SELECT r.*, u.name as student_name, u.email as student_email, e.name as equipment_name,
-           e.category as equipment_category, e.tags as equipment_tags, e.quantity as equipment_quantity,
-           e.min_session_minutes, e.max_session_minutes, d.name as department_name
+           e.category as equipment_category, e.quantity as equipment_quantity,
+           e.min_session_minutes, e.max_session_minutes, e.family, d.name as department_name
     FROM booking_requests r
     JOIN users u ON r.student_id = u.id
     JOIN equipment e ON r.equipment_id = e.id
@@ -53,11 +46,11 @@ export function analyzeRequestAllocation(requestId: number): AllocationAnalysis 
     throw { statusCode: 404, code: 'NOT_FOUND', message: 'Request not found' };
   }
 
-  // Find all competing pending requests for this equipment that overlap in time
+  // Find all competing pending requests on this equipment that overlap in time
   const competingRows = db.prepare(`
     SELECT r.*, u.name as student_name, u.email as student_email, e.name as equipment_name,
-           e.category as equipment_category, e.tags as equipment_tags, e.quantity as equipment_quantity,
-           e.min_session_minutes, e.max_session_minutes, d.name as department_name
+           e.category as equipment_category, e.quantity as equipment_quantity,
+           e.min_session_minutes, e.max_session_minutes, e.family, d.name as department_name
     FROM booking_requests r
     JOIN users u ON r.student_id = u.id
     JOIN equipment e ON r.equipment_id = e.id
@@ -69,164 +62,148 @@ export function analyzeRequestAllocation(requestId: number): AllocationAnalysis 
     ORDER BY r.created_at ASC
   `).all(req.equipment_id, req.end_time, req.start_time) as any[];
 
-  // Also include the primary request if not in list
+  // Ensure current request is in the candidate list if not already
   if (!competingRows.some(r => r.id === req.id)) {
     competingRows.push(req);
   }
 
-  // Score each competitor dynamically
-  const scoredCompetitors = competingRows.map(c => {
-    // calculate past hours
+  // Build candidates list
+  const candidates: CompetingRequestCandidate[] = competingRows.map(c => {
     const pastBookings = db.prepare(`
       SELECT start_time, end_time
       FROM booking_requests
-      WHERE student_id = ?
-        AND status = 'approved'
+      WHERE student_id = ? AND status = 'approved'
         AND datetime(start_time) >= datetime('now', '-30 days')
-    `).all(c.student_id) as Array<{ start_time: string; end_time: string }>;
+    `).all(c.student_id) as any[];
 
     let pastMinutes = 0;
     for (const b of pastBookings) {
       pastMinutes += getDurationMinutes(b.start_time, b.end_time);
     }
-    const pastHours = Math.round((pastMinutes / 60) * 10) / 10;
-    const deadlineDays = getDaysUntil(c.project_deadline, c.start_time);
-    const duration = getDurationMinutes(c.start_time, c.end_time);
 
-    const equipTags: string[] = JSON.parse(c.equipment_tags || '[]');
-    const requiredCaps: string[] = JSON.parse(c.required_capabilities || '[]');
-
-    const breakdown = calculatePriorityScore({
-      deadlineDays,
-      requiredCapabilities: requiredCaps,
-      equipmentTags: equipTags,
-      pastAllocatedHours: pastHours,
-      durationMinutes: duration,
-      minSessionMinutes: c.min_session_minutes,
-      maxSessionMinutes: c.max_session_minutes,
-    });
+    let structuredReqs: any[] | undefined = undefined;
+    if (c.requirements_json) {
+      try {
+        const parsed = JSON.parse(c.requirements_json);
+        if (Array.isArray(parsed)) {
+          if (typeof parsed[0] === 'string') {
+            structuredReqs = parsed.map((cap: string) => ({ capability: cap, level: 'full', priority: 'must' }));
+          } else {
+            structuredReqs = parsed;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     return {
-      request: {
-        ...c,
-        required_capabilities: requiredCaps,
-      },
-      score: breakdown.total,
-      breakdown,
-      isWinner: false,
+      id: c.id,
+      studentId: c.student_id,
+      studentName: c.student_name,
+      projectTitle: c.project_title,
+      projectDeadline: c.project_deadline,
+      startTime: c.start_time,
+      endTime: c.end_time,
+      durationMinutes: getDurationMinutes(c.start_time, c.end_time),
+      approvedHoursLast30Days: Math.round((pastMinutes / 60) * 10) / 10,
+      createdAt: c.created_at,
+      requirements: structuredReqs,
+      minSessionMinutes: c.min_session_minutes,
+      maxSessionMinutes: c.max_session_minutes,
     };
   });
 
-  // Rank competitors descending by priority score
-  scoredCompetitors.sort((a, b) => b.score - a.score);
+  const ranking = rankCompetingRequests(candidates, req.equipment_quantity || 1);
+  const conflicts = candidates.length > (req.equipment_quantity || 1);
+  const winnerRequestId = ranking.length > 0 && ranking[0].recommendation === 'approve' ? ranking[0].id : null;
 
-  const hasConflict = scoredCompetitors.length > req.equipment_quantity;
-  const winner = scoredCompetitors[0];
-  if (winner) {
-    winner.isWinner = true;
-  }
+  const competitors = ranking.map(r => {
+    const rawReq = competingRows.find(c => c.id === r.id);
+    return {
+      request: rawReq,
+      score: r.score.total,
+      breakdown: r.score,
+      rank: r.rank,
+      recommendation: r.recommendation,
+      isWinner: r.recommendation === 'approve',
+    };
+  });
 
-  // Generate alternative slots on this equipment
+  // Alternative slots (within next 7 days)
   const alternativeSlots: AlternativeSlot[] = [];
-  const reqDuration = getDurationMinutes(req.start_time, req.end_time);
-  const startDateStr = req.start_time.split('T')[0];
+  try {
+    const reqStartDate = req.start_time.split('T')[0];
+    const duration = getDurationMinutes(req.start_time, req.end_time);
 
-  // Look ahead 3 days for open slots
-  for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
-    const checkDate = addDays(startDateStr, dayOffset);
-    try {
-      const avail = getEquipmentAvailability(req.equipment_id, checkDate);
+    for (let dayOffset = 1; dayOffset <= 5; dayOffset++) {
+      if (alternativeSlots.length >= 3) break;
+      const targetDate = addDays(reqStartDate, dayOffset);
+      const avail = getEquipmentAvailability(req.equipment_id, targetDate);
+
       if (avail.isOpen) {
         for (const slot of avail.slots) {
           if (slot.status === 'free') {
-            const slotStartIso = slot.isoString;
-            const slotStartHour = Number(slot.time.split(':')[0]);
-            const slotStartMin = Number(slot.time.split(':')[1]);
-            const endTotalMin = slotStartHour * 60 + slotStartMin + reqDuration;
-            const endH = Math.floor(endTotalMin / 60);
-            const endM = endTotalMin % 60;
-            if (endH <= 17) {
-              const endIso = `${checkDate}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-              // Make sure it doesn't match the conflicted slot exactly
-              if (slotStartIso !== req.start_time) {
-                alternativeSlots.push({
-                  date: checkDate,
-                  start_time: slotStartIso,
-                  end_time: endIso,
-                });
-                if (alternativeSlots.length >= 3) break;
-              }
+            const [sh, sm] = slot.time.split(':').map(Number);
+            const endTotal = sh * 60 + sm + duration;
+            if (endTotal <= 17 * 60) {
+              const eh = Math.floor(endTotal / 60);
+              const em = endTotal % 60;
+              const endTime = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+
+              alternativeSlots.push({
+                date: targetDate,
+                start_time: `${targetDate}T${slot.time}`,
+                end_time: `${targetDate}T${endTime}`,
+              });
+              if (alternativeSlots.length >= 3) break;
             }
           }
         }
       }
-    } catch (e) {
-      // ignore
     }
-    if (alternativeSlots.length >= 3) break;
+  } catch {
+    // ignore
   }
 
-  // Generate alternative equipment cross-departmentally
-  const targetTags: string[] = JSON.parse(req.equipment_tags || '[]');
-  const otherEquip = db.prepare(`
-    SELECT e.id, e.name, e.category, e.location, e.tags, d.name as department_name
-    FROM equipment e
-    JOIN departments d ON e.department_id = d.id
-    WHERE e.id != ? AND e.status = 'active'
-  `).all(req.equipment_id) as Array<{
-    id: number;
-    name: string;
-    category: string;
-    location: string;
-    tags: string;
-    department_name: string;
-  }>;
-
-  const alternativeEquipment: AlternativeEquipment[] = [];
-  for (const eq of otherEquip) {
-    const tags: string[] = JSON.parse(eq.tags || '[]');
-    const overlap = targetTags.filter(t => tags.includes(t));
-    if (overlap.length > 0) {
-      const matchPct = Math.round((overlap.length / Math.max(1, targetTags.length)) * 100);
-      alternativeEquipment.push({
-        id: eq.id,
-        name: eq.name,
-        category: eq.category,
-        department_name: eq.department_name,
-        location: eq.location,
-        matchPercentage: matchPct,
-      });
-    }
+  // Alternative equipment from substitution engine
+  let alternativeEquipment: any[] = [];
+  try {
+    const subResult = findEquipmentSubstitutes(req.equipment_id);
+    alternativeEquipment = subResult.substitutes.slice(0, 3).map(s => ({
+      id: s.id,
+      slug: s.slug,
+      name: s.name,
+      category: s.category,
+      department_name: s.departmentName,
+      location: s.location,
+      imageUrl: s.imageUrl,
+      matchPercentage: s.compatibilityScore,
+      limitations: s.limitations,
+      availableQuantity: s.availableQuantity,
+    }));
+  } catch {
+    // ignore
   }
 
-  alternativeEquipment.sort((a, b) => b.matchPercentage - a.matchPercentage);
-  const topAltEquip = alternativeEquipment.slice(0, 3);
-
-  // Build rule-based transparent explanation
+  // Primary explanation
   let explanation = '';
-  if (!hasConflict) {
-    explanation = `There is currently no competing request for this equipment during the requested time slot. The request satisfies all laboratory constraints with a suitability score of ${winner.breakdown.suitability}% and fairness score of ${winner.breakdown.fairness}%.`;
+  if (!conflicts) {
+    explanation = `Single request on this equipment with no competing bookings. Scored ${ranking[0]?.score.total || 0}/100. Recommended for approval.`;
   } else {
-    const second = scoredCompetitors[1];
-    explanation = `Conflict detected: ${scoredCompetitors.length} students requested overlapping access to ${req.equipment_name} (capacity: ${req.equipment_quantity}). ` +
-      `Request by ${winner.request.student_name} ranks #1 with total score ${winner.score}/100. ` +
-      `Breakdown: Urgency=${winner.breakdown.urgency}/100 (deadline in ${winner.breakdown.factors.deadlineDays} days), ` +
-      `Fairness=${winner.breakdown.fairness}/100 (${winner.breakdown.factors.pastAllocatedHours} hrs past usage in 30 days), ` +
-      `Suitability=${winner.breakdown.suitability}%, Efficiency=${winner.breakdown.efficiency}%. ` +
-      (second
-        ? `In comparison, ${second.request.student_name} scored ${second.score}/100 (Urgency: ${second.breakdown.urgency}, Fairness: ${second.breakdown.fairness} with ${second.breakdown.factors.pastAllocatedHours} hrs usage). `
-        : '') +
-      `Recommended action: Approve ${winner.request.student_name}. Alternative slots on the same machine and compatible cross-departmental equipment have been identified for competing applicants.`;
+    const top = ranking[0];
+    explanation = `Contested slot: ${ranking.length} students competing for ${req.equipment_quantity || 1} workstation(s). ${top.studentName} is recommended for approval with highest fair allocation score (${top.score.total}/100) due to deadline urgency and equitable resource allocation. Other candidates are recommended for alternative slots or substitute equipment.`;
   }
 
   return {
-    conflicts: hasConflict,
-    totalCompetitors: scoredCompetitors.length,
-    winnerRequestId: winner ? winner.request.id : null,
-    competitors: scoredCompetitors,
+    conflicts,
+    totalCompetitors: candidates.length,
+    winnerRequestId,
+    ranking,
+    competitors,
     alternatives: {
       alternativeSlots,
-      alternativeEquipment: topAltEquip,
+      alternativeEquipment,
     },
     explanation,
     explanationSource: 'rule_based',

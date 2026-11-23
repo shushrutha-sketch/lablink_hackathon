@@ -163,6 +163,8 @@ export interface AllocationDetail {
     request: BookingRequest;
     score: number;
     breakdown: ScoreBreakdown;
+    rank?: number;
+    recommendation?: 'approve' | 'alternative';
     isWinner: boolean;
   }>;
   alternatives: {

@@ -45,6 +45,13 @@ export const ReviewDetail: React.FC = () => {
   }, [id]);
 
   const handleDecision = async (action: 'approve' | 'reject' | 'request_changes') => {
+    const isOverride = action === 'approve' && primaryTarget && !primaryTarget.isWinner;
+
+    if (isOverride && !comment.trim()) {
+      alert('An override reason is mandatory when approving a request that is not the engine\'s top recommendation.');
+      return;
+    }
+
     if ((action === 'reject' || action === 'request_changes') && !comment.trim()) {
       alert('A comment explaining the decision or requested modifications is required.');
       return;
@@ -326,6 +333,18 @@ export const ReviewDetail: React.FC = () => {
             Select an action to record your decision. Approvals are executed inside an atomic transaction to guarantee zero double-booking.
           </p>
         </div>
+
+        {primaryTarget && !primaryTarget.isWinner && (
+          <div className="bg-amber-500/20 border border-amber-400 text-amber-200 p-4 rounded-xl text-xs space-y-1">
+            <div className="font-bold flex items-center gap-1.5 text-amber-300">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Faculty Override Required
+            </div>
+            <p>
+              This request was ranked #{primaryTarget.rank} and is not the engine's recommended winner. You may still approve it, but a mandatory justification reason must be written in the comment box below.
+            </p>
+          </div>
+        )}
 
         {/* Comment textarea */}
         <div>

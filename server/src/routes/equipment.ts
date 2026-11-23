@@ -326,4 +326,16 @@ router.get('/equipment/:id/availability', async (req, res, next) => {
   }
 });
 
+// Equipment substitutes
+router.get('/equipment/:id/substitutes', async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const { findEquipmentSubstitutes } = await import('../services/substitutionService.js');
+    const result = findEquipmentSubstitutes(id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
