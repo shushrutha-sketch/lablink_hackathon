@@ -1,49 +1,49 @@
 {
   "dso-100mhz-4ch": {
     "file": "dso-100mhz-4ch.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Digital_Oscilloscope.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rigol_DS1074Z_Oscilloscope.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons / Rigol",
     "alt": "Benchtop 4-channel 100MHz digital storage oscilloscope displaying waveform and trigger controls",
     "verified": true
   },
   "handheld-scope-50mhz": {
     "file": "handheld-scope-50mhz.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Handheld_Oscilloscope.jpg",
-    "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tektronix_213_Portable_Oscilloscope_(14394189202).jpg",
+    "licence": "CC BY 2.0",
+    "author": "Wikimedia Commons / Tektronix",
     "alt": "Portable handheld 50MHz dual-channel digital oscilloscope with compact color LCD",
     "verified": true
   },
   "bench-psu-30v-5a": {
     "file": "bench-psu-30v-5a.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bench_Power_Supply.jpg",
-    "licence": "CC BY 3.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bench_power_supply.jpg",
+    "licence": "CC BY-SA 3.0",
+    "author": "Wikimedia Commons",
     "alt": "Precision 30V 5A benchtop adjustable DC power supply with digital LED display and output terminals",
     "verified": true
   },
   "soldering-station": {
     "file": "soldering-station.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Soldering_station.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Soldering_Station.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons",
     "alt": "Temperature-controlled ESD soldering and rework station with digital display and pencil iron",
     "verified": true
   },
   "logic-analyzer-8ch": {
     "file": "logic-analyzer-8ch.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Logic_analyzer.jpg",
-    "licence": "CC BY 3.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Saleae_Logic8_IMG_2876.jpg",
+    "licence": "CC BY-SA 3.0",
+    "author": "Wikimedia Commons / Saleae",
     "alt": "8-channel 24MHz USB logic analyzer hardware interface with multicolored test probe leads",
     "verified": true
   },
   "esp32-devkit-kit": {
     "file": "esp32-devkit-kit.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:ESP32_DevKitC_v4.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:ESP32_Dev_Board.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons / Espressif",
     "alt": "ESP32 dual-core microcontroller development board with integrated WiFi, Bluetooth and micro-USB",
     "verified": true
   },
@@ -51,15 +51,15 @@
     "file": "arduino-uno-kit.png",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arduino_Uno_-_R3.jpg",
     "licence": "CC BY-SA 3.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons / Arduino LLC",
     "alt": "Arduino Uno R3 development board with ATmega328P microcontroller, USB-B port and header sockets",
     "verified": true
   },
   "iot-sensor-kit": {
     "file": "iot-sensor-kit.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Electronic_sensors_kit.jpg",
-    "licence": "CC BY 4.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Magicbit_sensor_modules.jpg",
+    "licence": "CC BY-SA 4.0",
+    "author": "Wikimedia Commons",
     "alt": "IoT sensor starter module collection including soil moisture probe, DHT11 and ultrasonic sensor",
     "verified": true
   },
@@ -67,47 +67,47 @@
     "file": "raspberry-pi-4.png",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Raspberry_Pi_4_Model_B_-_Side.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons / Raspberry Pi Foundation",
     "alt": "Raspberry Pi 4 Model B single-board computer featuring quad-core ARM, USB 3.0 and dual micro-HDMI",
     "verified": true
   },
   "robotic-arm-4dof": {
     "file": "robotic-arm-4dof.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Robotic_Arm_Desktop.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:MA-3_Robotic_Manipulator_Arm-IMG_6021-white.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons",
     "alt": "4-degree-of-freedom articulated desktop robotic arm with micro-servo joints and parallel mechanical gripper",
     "verified": true
   },
   "mobile-robot-4wd": {
     "file": "mobile-robot-4wd.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:4WD_Robot_Chassis.jpg",
-    "licence": "CC BY 3.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arduino_Robot_(6099948101).jpg",
+    "licence": "CC BY 2.0",
+    "author": "Wikimedia Commons",
     "alt": "4-wheel-drive mobile robotics platform chassis with geared DC motors and battery compartment",
     "verified": true
   },
   "fdm-3d-printer": {
     "file": "fdm-3d-printer.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:3D_Printer_FDM.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Imprimante_3D.jpg",
     "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "author": "Wikimedia Commons",
     "alt": "Enclosed precision desktop FDM 3D printer with heated print bed, direct extruder and filament reel",
     "verified": true
   },
   "jetson-nano-kit": {
     "file": "jetson-nano-kit.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nvidia_Jetson_Nano.jpg",
-    "licence": "CC BY-SA 4.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:NVIDIA_Jetson_Nano_Developer_Kit_(40650425603).jpg",
+    "licence": "CC BY-SA 2.0",
+    "author": "Wikimedia Commons / NVIDIA",
     "alt": "NVIDIA Jetson Nano edge AI developer kit board with 128-core Maxwell GPU and passive aluminum heatsink",
     "verified": true
   },
   "gpu-workstation": {
     "file": "gpu-workstation.png",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Workstation_Computer.jpg",
-    "licence": "CC BY 3.0",
-    "author": "LabLink Hardware Archive",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mac_Pro_Tower.jpg",
+    "licence": "CC BY-SA 2.0",
+    "author": "Wikimedia Commons",
     "alt": "High-performance enterprise desktop GPU compute workstation tower with dedicated graphics card",
     "verified": true
   }
