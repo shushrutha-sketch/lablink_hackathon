@@ -16,11 +16,14 @@ import {
   GraduationCap,
   Building,
 } from 'lucide-react';
+import { CopilotLauncher } from './copilot/CopilotLauncher.js';
+import { CopilotDrawer } from './copilot/CopilotDrawer.js';
 
 export const Layout: React.FC = () => {
   const { user, demoUsers, switchPersona, logout } = useAuth();
   const navigate = useNavigate();
   const [personaOpen, setPersonaOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   const handlePersonaSwitch = async (targetUser: any) => {
     await switchPersona(targetUser);
@@ -218,6 +221,10 @@ export const Layout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* LabLink Copilot Floating Launcher & Slide-over Drawer */}
+      <CopilotLauncher onClick={() => setCopilotOpen(true)} isOpen={copilotOpen} />
+      <CopilotDrawer isOpen={copilotOpen} onClose={() => setCopilotOpen(false)} />
     </div>
   );
 };
