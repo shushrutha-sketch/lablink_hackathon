@@ -4,16 +4,18 @@ import { runMigrations } from './migrate.js';
 import { formatLocalDate, addDays } from '../domain/timeUtils.js';
 
 export function seedDatabase() {
-  console.log('Resetting and seeding database...');
-  runMigrations();
+  console.log('Resetting and seeding database to Part III Revision 3 specifications...');
 
-  // Clear existing data
+  // Drop old tables so schema changes apply cleanly
   db.exec('PRAGMA foreign_keys = OFF;');
-  db.exec('DELETE FROM audit_log;');
-  db.exec('DELETE FROM booking_requests;');
-  db.exec('DELETE FROM equipment;');
-  db.exec('DELETE FROM users;');
-  db.exec('DELETE FROM departments;');
+  db.exec('DROP TABLE IF EXISTS chat_messages;');
+  db.exec('DROP TABLE IF EXISTS audit_log;');
+  db.exec('DROP TABLE IF EXISTS booking_requests;');
+  db.exec('DROP TABLE IF EXISTS equipment_capabilities;');
+  db.exec('DROP TABLE IF EXISTS capabilities;');
+  db.exec('DROP TABLE IF EXISTS equipment;');
+  db.exec('DROP TABLE IF EXISTS users;');
+  db.exec('DROP TABLE IF EXISTS departments;');
   try {
     db.exec('DELETE FROM sqlite_sequence;');
   } catch (e) {
@@ -21,12 +23,13 @@ export function seedDatabase() {
   }
   db.exec('PRAGMA foreign_keys = ON;');
 
-  // 1. Departments
+  runMigrations();
+
+  // 1. Departments (3 departments as specified in Section 30)
   const insertDept = db.prepare('INSERT INTO departments (code, name) VALUES (?, ?)');
   insertDept.run('ECE', 'Department of Electrical & Computer Engineering');
+  insertDept.run('ME', 'Department of Mechanical Engineering');
   insertDept.run('CSE', 'Department of Computer Science & Engineering');
-  insertDept.run('MECH', 'Department of Mechanical Engineering & Mechatronics');
-  insertDept.run('BIO', 'Department of Biomedical Engineering & Materials');
 
   const deptRows = db.prepare('SELECT id, code FROM departments').all() as Array<{ id: number; code: string }>;
   const deptMap: Record<string, number> = {};
@@ -34,468 +37,733 @@ export function seedDatabase() {
     deptMap[d.code] = d.id;
   }
 
-  // 2. Demo Users (all use 'password123')
-  const passwordHash = bcrypt.hashSync('password123', 10);
+  // 2. Capabilities (15 controlled vocabulary capabilities from Section 30)
+  const insertCap = db.prepare(`
+    INSERT INTO capabilities (name, label, description, keywords)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const capabilitiesData = [
+    {
+      name: 'microcontroller',
+      label: 'Microcontroller',
+      description: 'Embedded MCU firmware execution, flashing, and GPIO control.',
+      keywords: ['microcontroller', 'mcu', 'arduino', 'esp32', 'embedded', 'firmware', 'c++', 'c'],
+    },
+    {
+      name: 'wifi-connectivity',
+      label: 'WiFi Connectivity',
+      description: '802.11 b/g/n wireless telemetry, HTTP/MQTT transmission, and IoT web server.',
+      keywords: ['wifi', 'wireless', 'iot', 'mqtt', 'http', 'cloud', 'internet', 'network'],
+    },
+    {
+      name: 'bluetooth',
+      label: 'Bluetooth',
+      description: 'Bluetooth Low Energy (BLE) peripheral, service advertising, and smartphone pairing.',
+      keywords: ['bluetooth', 'ble', 'wireless', 'beacon', 'pairing'],
+    },
+    {
+      name: 'sensor-interfacing',
+      label: 'Sensor Interfacing',
+      description: 'Analog and digital sensor integration via ADC, I2C, SPI, and UART buses.',
+      keywords: ['sensor', 'interfacing', 'adc', 'i2c', 'spi', 'analog', 'soil', 'moisture', 'temperature', 'dht11'],
+    },
+    {
+      name: 'signal-analysis',
+      label: 'Signal Analysis',
+      description: 'Waveform characterization, transient capture, bandwidth, and oscilloscope debugging.',
+      keywords: ['signal-analysis', 'oscilloscope', 'scope', 'waveform', 'analog', 'transient', 'debugging', 'voltage'],
+    },
+    {
+      name: 'digital-signal-capture',
+      label: 'Digital Signal Capture',
+      description: 'Multi-channel digital bus timing analysis and automated protocol decoding.',
+      keywords: ['logic-analyzer', 'digital-signal-capture', 'protocols', 'sniffing', 'timing', 'spi', 'i2c', 'uart'],
+    },
+    {
+      name: 'power-supply',
+      label: 'Power Supply',
+      description: 'Regulated adjustable DC benchtop voltage and current sourcing.',
+      keywords: ['power-supply', 'voltage', 'current', 'bench-power', 'psu', 'dc', 'regulation'],
+    },
+    {
+      name: 'soldering-prototyping',
+      label: 'Soldering & Prototyping',
+      description: 'Through-hole and SMD electronic circuit assembly, desoldering, and rework.',
+      keywords: ['soldering', 'soldering-prototyping', 'rework', 'smd', 'circuit-assembly', 'breadboard', 'pcb'],
+    },
+    {
+      name: 'linux-computing',
+      label: 'Linux Computing',
+      description: 'Single-board ARM Linux operating system, bash scripting, and edge applications.',
+      keywords: ['linux', 'linux-computing', 'raspberry-pi', 'arm', 'debian', 'ubuntu', 'bash', 'os'],
+    },
+    {
+      name: 'computer-vision',
+      label: 'Computer Vision',
+      description: 'Real-time camera video stream ingestion, OpenCV, object tracking, and filtering.',
+      keywords: ['computer-vision', 'vision', 'opencv', 'camera', 'image-processing', 'object-detection', 'tracking'],
+    },
+    {
+      name: 'machine-learning',
+      label: 'Machine Learning',
+      description: 'Neural network model inference, PyTorch, TensorFlow, and Edge AI deployment.',
+      keywords: ['machine-learning', 'ml', 'ai', 'deep-learning', 'pytorch', 'tensorflow', 'neural-network', 'inference'],
+    },
+    {
+      name: 'gpu-compute',
+      label: 'GPU Compute',
+      description: 'Parallel CUDA hardware accelerator cores for high-throughput matrix computations.',
+      keywords: ['gpu', 'gpu-compute', 'cuda', 'parallel', 'tensor', 'acceleration'],
+    },
+    {
+      name: 'robotics-actuation',
+      label: 'Robotics Actuation',
+      description: 'Servo motor joint positioning, kinematics, end-effector gripping, and motion planning.',
+      keywords: ['robotics', 'robotics-actuation', 'servo', 'gripper', 'arm', 'kinematics', 'actuator', 'motors'],
+    },
+    {
+      name: 'mobile-robotics',
+      label: 'Mobile Robotics',
+      description: 'Wheeled robot chassis, DC motor encoders, differential drive, and obstacle avoidance.',
+      keywords: ['mobile-robotics', 'robot', 'chassis', 'wheels', '4wd', 'differential-drive', 'navigation'],
+    },
+    {
+      name: '3d-printing',
+      label: '3D Printing',
+      description: 'Additive layer manufacturing, FDM filament deposition, and CAD mechanical enclosure fabrication.',
+      keywords: ['3d-printing', 'print', 'fdm', 'filament', 'pla', 'enclosure', 'cad', 'prototyping', 'fabrication'],
+    },
+  ];
+
+  for (const c of capabilitiesData) {
+    insertCap.run(c.name, c.label, c.description, JSON.stringify(c.keywords));
+  }
+
+  // 3. Demo Users (Section 4.1 & 11)
+  const demoPassword = process.env.DEMO_PASSWORD || 'password123';
+  const passwordHash = bcrypt.hashSync(demoPassword, 10);
   const insertUser = db.prepare(`
     INSERT INTO users (name, email, password_hash, role, department_id)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  insertUser.run('Alex Chen', 'alex@campus.edu', passwordHash, 'student', deptMap.ECE);
-  insertUser.run('Maya Patel', 'maya@campus.edu', passwordHash, 'student', deptMap.CSE);
-  insertUser.run('Jordan Taylor', 'jordan@campus.edu', passwordHash, 'student', deptMap.MECH);
-  insertUser.run('Dr. Sarah Lin', 'dr.lin@campus.edu', passwordHash, 'faculty', deptMap.ECE);
-  insertUser.run('Prof. James Miller', 'prof.miller@campus.edu', passwordHash, 'faculty', deptMap.CSE);
+  insertUser.run('Asha Sharma', 'asha@campus.edu', passwordHash, 'student', deptMap.ECE);
+  insertUser.run('Ravi Patel', 'ravi@campus.edu', passwordHash, 'student', deptMap.ECE);
+  insertUser.run('Meera Reddy', 'meera@campus.edu', passwordHash, 'student', deptMap.ECE);
+  insertUser.run('Dr. K. Rao', 'dr.rao@campus.edu', passwordHash, 'faculty', deptMap.ECE);
+  insertUser.run('Prof. Vikram Sen', 'prof.sen@campus.edu', passwordHash, 'faculty', deptMap.ME);
   insertUser.run('Chief Elena Rostova', 'admin@campus.edu', passwordHash, 'admin', deptMap.ECE);
 
-  // 3. Equipment Items (20 items across departments and categories)
+  const userRows = db.prepare('SELECT id, email FROM users').all() as Array<{ id: number; email: string }>;
+  const userMap: Record<string, number> = {};
+  for (const u of userRows) {
+    userMap[u.email] = u.id;
+  }
+
+  // 4. Equipment Items (Exact 14 Demonstration Items from Section 30)
   const insertEquip = db.prepare(`
-    INSERT INTO equipment (name, category, department_id, location, description, tags, specs, quantity, min_session_minutes, max_session_minutes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment (
+      slug, name, category, family, department_id, lab, location, description,
+      specs, compatible_projects, quantity, min_session_minutes, max_session_minutes,
+      status, image_path, image_alt, image_credit, is_demo
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `);
 
-  const equipments = [
+  const equipmentData = [
     {
-      name: 'Keysight 1GHz 4-Channel Digital Storage Oscilloscope',
-      category: 'Test & Measurement',
+      slug: 'dso-100mhz-4ch',
+      name: 'Digital Storage Oscilloscope',
+      category: 'Electronics',
+      family: 'oscilloscope',
       dept: deptMap.ECE,
-      location: 'Engineering Hall, Lab 302',
-      description: 'High-speed oscilloscope for mixed-signal debugging, protocol analysis (I2C/SPI/CAN), and fast transient capture.',
-      tags: ['oscilloscope', 'rf', 'signal-analysis', 'hardware-debugging', 'embedded'],
-      specs: { 'Bandwidth': '1 GHz', 'Sample Rate': '5 GSa/s', 'Channels': '4', 'Memory Depth': '4 Mpts' },
-      quantity: 2,
+      lab: 'Electronics Lab',
+      location: 'Shannon Engineering Hall, Room 302',
+      description: 'High-precision 100MHz 4-channel digital storage oscilloscope with real-time waveform inspection, automated cursor measurements, and trigger holdoff.',
+      specs: [
+        { key: 'bandwidth_mhz', label: 'Bandwidth', value: 100, unit: 'MHz', higherIsBetter: true },
+        { key: 'channels', label: 'Channels', value: 4, unit: 'ch', higherIsBetter: true },
+        { key: 'sample_rate_msps', label: 'Sample Rate', value: 1000, unit: 'MS/s', higherIsBetter: true },
+      ],
+      compatible_projects: ['Signal integrity analysis', 'Analog filter tuning', 'High-frequency transient capture'],
+      quantity: 1,
       min: 30,
       max: 180,
       status: 'active',
+      image_path: 'dso-100mhz-4ch.png',
+      image_alt: 'Benchtop 4-channel 100MHz digital storage oscilloscope displaying waveform and trigger controls',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [{ cap: 'signal-analysis', level: 'full' }],
     },
     {
-      name: 'Rohde & Schwarz 3.6GHz Spectrum Analyzer',
-      category: 'Test & Measurement',
+      slug: 'handheld-scope-50mhz',
+      name: 'Handheld Oscilloscope',
+      category: 'Electronics',
+      family: 'oscilloscope',
       dept: deptMap.ECE,
-      location: 'Engineering Hall, RF Shielded Room 308',
-      description: 'Precision microwave and RF spectrum analyzer with preamplifiers and tracking generator for antenna/EMC testing.',
-      tags: ['rf', 'spectrum-analyzer', 'wireless', 'antenna', 'emc', 'microwave'],
-      specs: { 'Frequency Range': '9 kHz - 3.6 GHz', 'DANL': '-163 dBm', 'Resolution Bandwidth': '1 Hz - 3 MHz' },
-      quantity: 1,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Xilinx Zynq UltraScale+ MPSoC Development Board',
-      category: 'Embedded & FPGA',
-      dept: deptMap.ECE,
-      location: 'Embedded Systems Lab, Room 215',
-      description: 'Heterogeneous ARM + FPGA SoC development kit with high-speed transceivers, DDR4, and PCIe Gen3 for computer vision and DSP.',
-      tags: ['fpga', 'verilog', 'vhdl', 'zynq', 'embedded', 'dsp', 'hardware-acceleration'],
-      specs: { 'Logic Cells': '256K', 'Processor': 'Quad-core ARM Cortex-A53', 'Memory': '4GB DDR4' },
+      lab: 'Electronics Lab',
+      location: 'Shannon Engineering Hall, Room 302',
+      description: 'Portable battery-powered 50MHz dual-channel digital oscilloscope for quick in-circuit probing, sensor signal checks, and fieldwork.',
+      specs: [
+        { key: 'bandwidth_mhz', label: 'Bandwidth', value: 50, unit: 'MHz', higherIsBetter: true },
+        { key: 'channels', label: 'Channels', value: 2, unit: 'ch', higherIsBetter: true },
+        { key: 'sample_rate_msps', label: 'Sample Rate', value: 250, unit: 'MS/s', higherIsBetter: true },
+      ],
+      compatible_projects: ['Field sensor diagnostics', 'Audio waveform verification', 'Basic PWM frequency testing'],
       quantity: 2,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Keithley 2450 High-Precision SourceMeter (SMU)',
-      category: 'Test & Measurement',
-      dept: deptMap.ECE,
-      location: 'Solid-State Lab, Room 310',
-      description: 'Touchscreen source measurement unit capable of simultaneous voltage/current sourcing and picoampere-level measuring.',
-      tags: ['smu', 'current-measurement', 'semiconductor', 'iv-curve', 'nano-amps'],
-      specs: { 'Current Range': '10 nA - 1 A', 'Voltage Range': '20 mV - 200 V', 'Accuracy': '0.012%' },
-      quantity: 1,
       min: 30,
       max: 120,
       status: 'active',
+      image_path: 'handheld-scope-50mhz.png',
+      image_alt: 'Portable handheld 50MHz dual-channel digital oscilloscope with compact color LCD',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [{ cap: 'signal-analysis', level: 'full' }],
     },
     {
-      name: 'NVIDIA Dual H100 NVLink AI Supercomputing Node',
-      category: 'AI & GPU Compute',
-      dept: deptMap.CSE,
-      location: 'Turing Data Center, Rack 04',
-      description: 'Flagship deep learning server with dual 80GB SXM5 H100 GPUs, 600GB/s NVLink, and 512GB host RAM for training large models.',
-      tags: ['gpu', 'h100', 'deep-learning', 'pytorch', 'cuda', 'llm', 'computer-vision'],
-      specs: { 'GPUs': '2x NVIDIA H100 80GB SXM5', 'Host RAM': '512 GB ECC DDR5', 'NVLink Bandwidth': '600 GB/s' },
-      quantity: 1,
-      min: 60,
-      max: 240,
+      slug: 'bench-psu-30v-5a',
+      name: 'Bench Power Supply',
+      category: 'Electronics',
+      family: 'power-supply',
+      dept: deptMap.ECE,
+      lab: 'Electronics Lab',
+      location: 'Shannon Engineering Hall, Room 304',
+      description: 'Linear regulated benchtop DC power supply providing 0-30V and 0-5A with dual LED displays, constant current (CC), and constant voltage (CV) modes.',
+      specs: [
+        { key: 'voltage_max_v', label: 'Max Voltage', value: 30, unit: 'V', higherIsBetter: true },
+        { key: 'current_max_a', label: 'Max Current', value: 5, unit: 'A', higherIsBetter: true },
+      ],
+      compatible_projects: ['Circuit board power bring-up', 'LED driver benchmarking', 'Motor stall current testing'],
+      quantity: 4,
+      min: 30,
+      max: 120,
       status: 'active',
+      image_path: 'bench-psu-30v-5a.png',
+      image_alt: 'Precision 30V 5A benchtop adjustable DC power supply with digital LED display and output terminals',
+      image_credit: 'LabLink Hardware Archive (CC BY 3.0)',
+      capabilities: [{ cap: 'power-supply', level: 'full' }],
     },
     {
-      name: 'NVIDIA RTX 4090 Deep Learning Workstation',
-      category: 'AI & GPU Compute',
-      dept: deptMap.CSE,
-      location: 'AI Research Lab, Room 402',
-      description: 'High-performance desktop workstation for computer vision model inference, reinforcement learning, and local LLM fine-tuning.',
-      tags: ['gpu', 'cuda', 'deep-learning', 'pytorch', 'tensorflow', 'machine-learning'],
-      specs: { 'GPU': 'NVIDIA RTX 4090 24GB VRAM', 'CPU': 'AMD Threadripper 32-Core', 'RAM': '128 GB' },
+      slug: 'soldering-station',
+      name: 'Soldering and Rework Station',
+      category: 'Electronics',
+      family: 'rework-tool',
+      dept: deptMap.ECE,
+      lab: 'Electronics Lab',
+      location: 'Shannon Engineering Hall, Room 308',
+      description: 'ESD-safe temperature-controlled soldering station with PID micro-temperature regulation, precision pencil iron, and brass tip cleaner.',
+      specs: [{ key: 'temp_max_c', label: 'Max Temperature', value: 450, unit: '°C', higherIsBetter: true }],
+      compatible_projects: ['Through-hole header soldering', 'SMD component rework', 'Custom sensor wiring harness'],
+      quantity: 4,
+      min: 30,
+      max: 120,
+      status: 'active',
+      image_path: 'soldering-station.png',
+      image_alt: 'Temperature-controlled ESD soldering and rework station with digital display and pencil iron',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [{ cap: 'soldering-prototyping', level: 'full' }],
+    },
+    {
+      slug: 'logic-analyzer-8ch',
+      name: 'USB Logic Analyzer',
+      category: 'Electronics',
+      family: 'signal-capture',
+      dept: deptMap.ECE,
+      lab: 'Electronics Lab',
+      location: 'Shannon Engineering Hall, Room 302',
+      description: '8-channel 24MHz USB logic analyzer hardware interface with automated software protocol decoding for I2C, SPI, UART, and CAN protocols.',
+      specs: [
+        { key: 'channels', label: 'Channels', value: 8, unit: 'ch', higherIsBetter: true },
+        { key: 'sample_rate_msps', label: 'Sample Rate', value: 100, unit: 'MS/s', higherIsBetter: true },
+      ],
+      compatible_projects: ['SPI flash dump debugging', 'I2C sensor communication verification', 'UART packet timing inspection'],
       quantity: 3,
       min: 30,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'NVIDIA Jetson AGX Orin Robotics Development Kit',
-      category: 'Embedded & FPGA',
-      dept: deptMap.CSE,
-      location: 'Autonomous Robotics Lab, Room 410',
-      description: 'Server-class AI performance in an embedded 275 TOPS form factor for autonomous drones, mobile robots, and edge SLAM.',
-      tags: ['embedded', 'robotics', 'edge-ai', 'jetson', 'computer-vision', 'ros2'],
-      specs: { 'AI Compute': '275 TOPS', 'GPU': 'Ampere 2048 cores', 'RAM': '64 GB LPDDR5' },
-      quantity: 2,
-      min: 30,
-      max: 180,
-      status: 'active',
-    },
-    {
-      name: 'Logic Pro 16-Channel 500MHz USB Logic Analyzer',
-      category: 'Test & Measurement',
-      dept: deptMap.CSE,
-      location: 'Systems & Networks Lab, Room 406',
-      description: '16-channel digital and analog input logic analyzer with automated decoding for SPI, I2C, UART, CAN, USB 1.1, and custom protocols.',
-      tags: ['logic-analyzer', 'protocols', 'spi', 'i2c', 'uart', 'embedded', 'hardware-debugging'],
-      specs: { 'Channels': '16 digital/analog', 'Digital Sample Rate': '500 MS/s', 'Voltage': '1.2V - 5.5V' },
-      quantity: 2,
-      min: 30,
       max: 120,
       status: 'active',
+      image_path: 'logic-analyzer-8ch.png',
+      image_alt: '8-channel 24MHz USB logic analyzer hardware interface with multicolored test probe leads',
+      image_credit: 'LabLink Hardware Archive (CC BY 3.0)',
+      capabilities: [{ cap: 'digital-signal-capture', level: 'full' }],
     },
     {
-      name: 'Formlabs Form 4 High-Speed SLA Resin 3D Printer',
-      category: 'Additive Manufacturing',
-      dept: deptMap.MECH,
-      location: 'Digital Prototyping Workshop, Bay 1',
-      description: 'Next-generation stereolithography (SLA) resin printer delivering 50-micron details for precision mechanical enclosures and microfluidics.',
-      tags: ['3d-printing', 'sla', 'resin', 'prototyping', 'microfluidics', 'rapid-prototyping'],
-      specs: { 'Technology': 'Low Force Display (LFD) SLA', 'XY Resolution': '50 um', 'Build Volume': '20.0 x 12.5 x 21.0 cm' },
-      quantity: 1,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Bambu Lab X1-Carbon Multi-Color 3D Printer',
-      category: 'Additive Manufacturing',
-      dept: deptMap.MECH,
-      location: 'Digital Prototyping Workshop, Bay 2',
-      description: 'High-speed CoreXY 3D printer with active vibration compensation, carbon-fiber filament capability, and multi-material AMS.',
-      tags: ['3d-printing', 'fdm', 'carbon-fiber', 'pla', 'prototyping', 'mechanical-design'],
-      specs: { 'Max Speed': '500 mm/s', 'Hotend Temp': '300 C', 'Build Volume': '256 x 256 x 256 mm' },
-      quantity: 2,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Bantam Tools Desktop CNC Milling Machine',
-      category: 'Precision Machining',
-      dept: deptMap.MECH,
-      location: 'Machine Shop, Station 3',
-      description: 'Precision desktop CNC mill tailored for fast aluminum prototyping, brass machining, and custom double-sided PCB fabrication.',
-      tags: ['cnc', 'machining', 'pcb-milling', 'aluminum', 'prototyping', 'cam'],
-      specs: { 'Spindle Speed': '28,000 RPM', 'Repeatability': '< 0.025 mm', 'Work Area': '140 x 114 x 34 mm' },
-      quantity: 1,
-      min: 60,
-      max: 180,
-      status: 'active',
-    },
-    {
-      name: 'Universal Robots UR5e 6-Axis Collaborative Robotic Arm',
-      category: 'Robotics & Automation',
-      dept: deptMap.MECH,
-      location: 'Robotics Wing, Cell A',
-      description: 'Industrial-grade cobot arm with 5kg payload, 850mm reach, integrated force-torque sensor, and ROS2 control interface.',
-      tags: ['robotics', 'manipulator', 'ros2', 'automation', 'kinematics', 'trajectory-planning'],
-      specs: { 'Payload': '5 kg', 'Reach': '850 mm', 'Repeatability': '+/- 0.03 mm', 'Degrees of Freedom': '6' },
-      quantity: 1,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Markforged Onyx Pro Continuous Fiber 3D Printer',
-      category: 'Additive Manufacturing',
-      dept: deptMap.MECH,
-      location: 'Advanced Materials Shop, Bay 3',
-      description: 'Industrial 3D printer reinforcing micro-carbon onyx filament with continuous fiberglass strands for end-use functional parts.',
-      tags: ['3d-printing', 'composite', 'fiberglass', 'onyx', 'high-strength', 'prototyping'],
-      specs: { 'Tensile Strength': '590 MPa', 'Layer Height': '100 um', 'Build Volume': '320 x 132 x 154 mm' },
-      quantity: 1,
-      min: 60,
-      max: 240,
-      status: 'active',
-    },
-    {
-      name: 'Shimadzu UV-2600i Double Beam UV-Vis Spectrophotometer',
-      category: 'Analytical Spectroscopy',
-      dept: deptMap.BIO,
-      location: 'Bio-Spectroscopy Lab, Room 104',
-      description: 'Ultra-low stray light double beam spectrophotometer covering 185 to 900 nm for biomolecular quantification and bandgap analysis.',
-      tags: ['spectrophotometer', 'uv-vis', 'biochemical', 'absorbance', 'materials-characterization'],
-      specs: { 'Wavelength Range': '185 - 900 nm', 'Stray Light': '0.005%', 'Spectral Bandwidth': '0.1 - 5 nm' },
-      quantity: 1,
-      min: 30,
-      max: 120,
-      status: 'active',
-    },
-    {
-      name: 'Horiba FluoroMax-4 Benchtop Spectrofluorometer',
-      category: 'Analytical Spectroscopy',
-      dept: deptMap.BIO,
-      location: 'Bio-Spectroscopy Lab, Room 106',
-      description: 'High-sensitivity spectrofluorometer with photon-counting detection for fluorescence lifetime, quantum yield, and FRET assays.',
-      tags: ['fluorescence', 'spectroscopy', 'fret', 'biochemical', 'quantum-yield', 'photoluminescence'],
-      specs: { 'Signal-to-Noise': '3000:1 (RMS)', 'Integration Time': '1 ms - 160 s', 'Excitation': '200 - 950 nm' },
-      quantity: 1,
-      min: 30,
-      max: 150,
-      status: 'active',
-    },
-    {
-      name: 'Thorlabs Optical Isolation Breadboard & Interferometer',
-      category: 'Optics & Photonics',
-      dept: deptMap.BIO,
-      location: 'Cleanroom Basement, Optical Suite 2',
-      description: 'Pneumatically isolated honeycomb optical table with HeNe lasers, Michelson & Mach-Zehnder optical configurations, and precision piezo mounts.',
-      tags: ['optics', 'interferometer', 'laser', 'piezo', 'photonics', 'vibration-isolation'],
-      specs: { 'Isolation': 'Active Pneumatic Support', 'Laser Wavelength': '632.8 nm HeNe', 'Table Size': '1.2 x 2.4 m' },
-      quantity: 1,
-      min: 60,
-      max: 240,
-      status: 'active', // low utilization item to trigger underutilized recommendations
-    },
-    {
-      name: 'Malvern Zetasizer Nano-ZS Nanoparticle Analyzer',
-      category: 'Analytical Spectroscopy',
-      dept: deptMap.BIO,
-      location: 'Colloid & Surface Science Lab, Room 202',
-      description: 'Dynamic light scattering (DLS) system for measuring nanoparticle size, zeta potential, and molecular weight of polymers and proteins.',
-      tags: ['nanoparticles', 'dls', 'zeta-potential', 'colloids', 'biopolymers', 'particle-sizing'],
-      specs: { 'Size Range': '0.3 nm - 10 um', 'Zeta Range': '3.8 nm - 100 um', 'Laser': '4 mW He-Ne 633 nm' },
-      quantity: 1,
-      min: 30,
-      max: 120,
-      status: 'active',
-    },
-    {
-      name: 'SMT Automated Pick and Place PCB Assembly Machine',
-      category: 'Precision Machining',
+      slug: 'esp32-devkit-kit',
+      name: 'ESP32 Development Kit',
+      category: 'IoT',
+      family: 'mcu-dev-board',
       dept: deptMap.ECE,
-      location: 'Hardware Prototyping Bay, Station 4',
-      description: 'High-speed desktop SMD component placer with dual vision cameras and tape feeders for quick PCB pilot run manufacturing.',
-      tags: ['smt', 'pcb-assembly', 'pick-and-place', 'surface-mount', 'hardware-prototyping'],
-      specs: { 'Component Size': '0402 - QFP/BGA', 'Speed': '3,000 CPH', 'Feeders': '30 slots' },
-      quantity: 1,
-      min: 60,
-      max: 180,
-      status: 'maintenance', // currently undergoing scheduled maintenance
-    },
-    {
-      name: 'Fluke 8846A 6.5 Digit Precision Multimeter',
-      category: 'Test & Measurement',
-      dept: deptMap.ECE,
-      location: 'Electronics Instrumentation Lab, Bench 7',
-      description: 'High-precision benchtop digital multimeter for low-voltage logging, graphical trending, and 4-wire resistance calibration.',
-      tags: ['multimeter', 'voltage-measurement', 'calibration', 'precision-instrumentation'],
-      specs: { 'Resolution': '6.5 Digits', 'V DC Accuracy': '0.0024%', 'Max Current': '10 A' },
-      quantity: 2,
+      lab: 'IoT Lab',
+      location: 'Communications Wing, Room 210',
+      description: 'Tensilica dual-core 240MHz microcontroller development board with integrated 802.11 b/g/n WiFi and Bluetooth 4.2 BLE for cloud-connected IoT prototypes.',
+      specs: [
+        { key: 'clock_mhz', label: 'Clock Speed', value: 240, unit: 'MHz', higherIsBetter: true },
+        { key: 'flash_kb', label: 'Flash Memory', value: 4096, unit: 'KB', higherIsBetter: true },
+      ],
+      compatible_projects: ['Smart agriculture monitor', 'Weather station', 'MQTT sensor gateway'],
+      quantity: 8,
       min: 30,
-      max: 120,
+      max: 180,
       status: 'active',
+      image_path: 'esp32-devkit-kit.png',
+      image_alt: 'ESP32 dual-core microcontroller development board with integrated WiFi, Bluetooth and micro-USB',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [
+        { cap: 'microcontroller', level: 'full' },
+        { cap: 'wifi-connectivity', level: 'full' },
+        { cap: 'bluetooth', level: 'full' },
+        { cap: 'sensor-interfacing', level: 'full' },
+      ],
     },
     {
-      name: 'Franka Emika Panda Collaborative Arm with Gripper',
-      category: 'Robotics & Automation',
-      dept: deptMap.CSE,
-      location: 'Interactive Robotics Lab, Room 412',
-      description: '7-DOF robotic manipulator with torque sensors in all 7 axes for sensitive impedance control, tactile feedback, and reinforcement learning.',
-      tags: ['robotics', 'manipulator', 'force-control', 'ros2', 'impedance-control', 'reinforcement-learning'],
-      specs: { 'Degrees of Freedom': '7', 'Payload': '3 kg', 'Reach': '855 mm', 'Joint Torque Sensing': 'All axes' },
-      quantity: 1,
+      slug: 'arduino-uno-kit',
+      name: 'Arduino Uno R3 Kit',
+      category: 'IoT',
+      family: 'mcu-dev-board',
+      dept: deptMap.ECE,
+      lab: 'IoT Lab',
+      location: 'Communications Wing, Room 210',
+      description: 'Standard ATmega328P 16MHz microcontroller board with standard shield headers, 14 digital I/O pins, and 6 analog inputs.',
+      specs: [
+        { key: 'clock_mhz', label: 'Clock Speed', value: 16, unit: 'MHz', higherIsBetter: true },
+        { key: 'flash_kb', label: 'Flash Memory', value: 32, unit: 'KB', higherIsBetter: true },
+      ],
+      compatible_projects: ['Basic sensor logging', 'Stepper motor control', 'Classroom robotics basics'],
+      quantity: 10,
+      min: 30,
+      max: 180,
+      status: 'active',
+      image_path: 'arduino-uno-kit.png',
+      image_alt: 'Arduino Uno R3 development board with ATmega328P microcontroller, USB-B port and header sockets',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 3.0)',
+      capabilities: [
+        { cap: 'microcontroller', level: 'full' },
+        { cap: 'sensor-interfacing', level: 'full' },
+        { cap: 'wifi-connectivity', level: 'partial', limitation: 'Needs an external WiFi module, no onboard wireless' },
+      ],
+    },
+    {
+      slug: 'iot-sensor-kit',
+      name: 'IoT Sensor Starter Kit',
+      category: 'IoT',
+      family: 'sensor-module',
+      dept: deptMap.ECE,
+      lab: 'IoT Lab',
+      location: 'Communications Wing, Room 212',
+      description: 'Comprehensive sensor module kit containing soil moisture probe, DHT11 temp/humidity, HC-SR04 ultrasonic distance, LDR light, and PIR motion sensor.',
+      specs: [{ key: 'sensor_count', label: 'Sensor Types', value: 5, unit: 'types', higherIsBetter: true }],
+      compatible_projects: ['Smart agriculture monitor', 'Weather station', 'Smart home sensing'],
+      quantity: 6,
+      min: 30,
+      max: 180,
+      status: 'active',
+      image_path: 'iot-sensor-kit.png',
+      image_alt: 'IoT sensor starter module collection including soil moisture probe, DHT11 and ultrasonic sensor',
+      image_credit: 'LabLink Hardware Archive (CC BY 4.0)',
+      capabilities: [{ cap: 'sensor-interfacing', level: 'full' }],
+    },
+    {
+      slug: 'raspberry-pi-4',
+      name: 'Raspberry Pi 4 Model B Kit',
+      category: 'IoT',
+      family: 'sbc-linux',
+      dept: deptMap.ECE,
+      lab: 'IoT Lab',
+      location: 'Communications Wing, Room 214',
+      description: 'Quad-core 1.5GHz ARM Cortex-A72 computer with 4GB LPDDR4 RAM, Gigabit Ethernet, dual micro-HDMI 4K video, and full Linux terminal environment.',
+      specs: [
+        { key: 'ram_gb', label: 'RAM', value: 4, unit: 'GB', higherIsBetter: true },
+        { key: 'cpu_cores', label: 'CPU Cores', value: 4, unit: 'cores', higherIsBetter: true },
+      ],
+      compatible_projects: ['Edge gateway hub', 'Local database recorder', 'Lightweight computer vision'],
+      quantity: 6,
+      min: 30,
+      max: 240,
+      status: 'active',
+      image_path: 'raspberry-pi-4.png',
+      image_alt: 'Raspberry Pi 4 Model B single-board computer featuring quad-core ARM, USB 3.0 and dual micro-HDMI',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [
+        { cap: 'linux-computing', level: 'full' },
+        { cap: 'wifi-connectivity', level: 'full' },
+        { cap: 'bluetooth', level: 'full' },
+        { cap: 'sensor-interfacing', level: 'full' },
+        { cap: 'computer-vision', level: 'partial', limitation: 'Light models at low frame rates only' },
+      ],
+    },
+    {
+      slug: 'robotic-arm-4dof',
+      name: 'Desktop Robotic Arm (4-DOF)',
+      category: 'Robotics',
+      family: 'manipulator',
+      dept: deptMap.ME,
+      lab: 'Robotics and Fabrication Lab',
+      location: 'Maxwell Mechanical Wing, Bay 2',
+      description: 'Desktop 4-axis articulated robotic manipulator with metal-gear servo joints, inverse kinematics controller, and parallel pick-and-place gripper.',
+      specs: [
+        { key: 'dof', label: 'Degrees of Freedom', value: 4, unit: 'DOF', higherIsBetter: true },
+        { key: 'payload_g', label: 'Payload', value: 500, unit: 'g', higherIsBetter: true },
+      ],
+      compatible_projects: ['Automated sorting assembly', 'Kinematics trajectory verification', 'Visual servoing grasp test'],
+      quantity: 2,
       min: 60,
       max: 240,
       status: 'active',
+      image_path: 'robotic-arm-4dof.png',
+      image_alt: '4-degree-of-freedom articulated desktop robotic arm with micro-servo joints and parallel mechanical gripper',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [{ cap: 'robotics-actuation', level: 'full' }],
+    },
+    {
+      slug: 'mobile-robot-4wd',
+      name: '4WD Mobile Robot Platform',
+      category: 'Robotics',
+      family: 'mobile-platform',
+      dept: deptMap.ME,
+      lab: 'Robotics and Fabrication Lab',
+      location: 'Maxwell Mechanical Wing, Bay 3',
+      description: 'Sturdy four-wheel-drive aluminum chassis equipped with geared DC motors, optical speed encoders, and mounting plates for sensor payloads.',
+      specs: [
+        { key: 'wheels', label: 'Wheels', value: 4, unit: 'wheels', higherIsBetter: true },
+        { key: 'payload_kg', label: 'Payload', value: 2, unit: 'kg', higherIsBetter: true },
+      ],
+      compatible_projects: ['Autonomous SLAM navigation', 'Line following racer', 'Warehouse AGV dispatch'],
+      quantity: 3,
+      min: 60,
+      max: 240,
+      status: 'active',
+      image_path: 'mobile-robot-4wd.png',
+      image_alt: '4-wheel-drive mobile robotics platform chassis with geared DC motors and battery compartment',
+      image_credit: 'LabLink Hardware Archive (CC BY 3.0)',
+      capabilities: [
+        { cap: 'mobile-robotics', level: 'full' },
+        { cap: 'robotics-actuation', level: 'partial', limitation: 'Drive motors only, no manipulator' },
+      ],
+    },
+    {
+      slug: 'fdm-3d-printer',
+      name: 'FDM 3D Printer',
+      category: 'Robotics',
+      family: 'fdm-printer',
+      dept: deptMap.ME,
+      lab: 'Robotics and Fabrication Lab',
+      location: 'Maxwell Mechanical Wing, Rapid Prototyping Bay 1',
+      description: 'Precision desktop FDM 3D printer with direct-drive extruder, 220mm heated bed, automatic bed leveling, and silent stepper drivers for PLA/PETG.',
+      specs: [{ key: 'build_x_mm', label: 'Build Area', value: 220, unit: 'mm', higherIsBetter: true }],
+      compatible_projects: ['Custom sensor enclosure', 'Robotic arm bracket', 'Drone chassis prototype'],
+      quantity: 2,
+      min: 60,
+      max: 240,
+      status: 'active',
+      image_path: 'fdm-3d-printer.png',
+      image_alt: 'Enclosed precision desktop FDM 3D printer with heated print bed, direct extruder and filament reel',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [{ cap: '3d-printing', level: 'full' }],
+    },
+    {
+      slug: 'jetson-nano-kit',
+      name: 'NVIDIA Jetson Nano Developer Kit',
+      category: 'Computing',
+      family: 'edge-ai-compute',
+      dept: deptMap.CSE,
+      lab: 'Computing Lab',
+      location: 'Turing Computer Science Building, Room 402',
+      description: '128-core NVIDIA Maxwell GPU edge AI system with 4GB RAM delivering 472 GFLOPS for real-time deep learning inference and multiple camera streams.',
+      specs: [
+        { key: 'cuda_cores', label: 'CUDA Cores', value: 128, unit: 'cores', higherIsBetter: true },
+        { key: 'ram_gb', label: 'RAM', value: 4, unit: 'GB', higherIsBetter: true },
+      ],
+      compatible_projects: ['Real-time object detection', 'Edge AI pedestrian analytics', 'Autonomous vehicle lane detection'],
+      quantity: 3,
+      min: 60,
+      max: 240,
+      status: 'active',
+      image_path: 'jetson-nano-kit.png',
+      image_alt: 'NVIDIA Jetson Nano edge AI developer kit board with 128-core Maxwell GPU and passive aluminum heatsink',
+      image_credit: 'LabLink Hardware Archive (CC BY-SA 4.0)',
+      capabilities: [
+        { cap: 'linux-computing', level: 'full' },
+        { cap: 'computer-vision', level: 'full' },
+        { cap: 'machine-learning', level: 'partial', limitation: 'Inference and small models, not large-scale training' },
+        { cap: 'gpu-compute', level: 'partial', limitation: '128 CUDA cores' },
+      ],
+    },
+    {
+      slug: 'gpu-workstation',
+      name: 'GPU Workstation',
+      category: 'Computing',
+      family: 'gpu-workstation',
+      dept: deptMap.CSE,
+      lab: 'Computing Lab',
+      location: 'Turing Computer Science Building, Room 406',
+      description: 'High-performance desktop workstation with 16GB dedicated GPU VRAM, 32GB system DDR5 RAM, and liquid cooling for deep neural network training.',
+      specs: [
+        { key: 'gpu_vram_gb', label: 'GPU VRAM', value: 16, unit: 'GB', higherIsBetter: true },
+        { key: 'ram_gb', label: 'System RAM', value: 32, unit: 'GB', higherIsBetter: true },
+      ],
+      compatible_projects: ['PyTorch vision transformer training', 'Custom object detection model fine-tuning', 'Diffusion model rendering'],
+      quantity: 2,
+      min: 60,
+      max: 240,
+      status: 'active',
+      image_path: 'gpu-workstation.png',
+      image_alt: 'High-performance enterprise desktop GPU compute workstation tower with dedicated graphics card',
+      image_credit: 'LabLink Hardware Archive (CC BY 3.0)',
+      capabilities: [
+        { cap: 'gpu-compute', level: 'full' },
+        { cap: 'machine-learning', level: 'full' },
+        { cap: 'computer-vision', level: 'full' },
+        { cap: 'linux-computing', level: 'full' },
+      ],
     },
   ];
 
-  for (const eq of equipments) {
-    insertEquip.run(
+  const insertEquipCap = db.prepare(`
+    INSERT INTO equipment_capabilities (equipment_id, capability, level, limitation)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const equipIdMap: Record<string, number> = {};
+
+  for (const eq of equipmentData) {
+    const res = insertEquip.run(
+      eq.slug,
       eq.name,
       eq.category,
+      eq.family,
       eq.dept,
+      eq.lab,
       eq.location,
       eq.description,
-      JSON.stringify(eq.tags),
       JSON.stringify(eq.specs),
+      JSON.stringify(eq.compatible_projects),
       eq.quantity,
       eq.min,
       eq.max,
-      eq.status
+      eq.status,
+      eq.image_path,
+      eq.image_alt,
+      eq.image_credit
     );
+    const equipId = Number(res.lastInsertRowid);
+    equipIdMap[eq.slug] = equipId;
+
+    for (const ec of eq.capabilities) {
+      insertEquipCap.run(equipId, ec.cap, ec.level, (ec as any).limitation || null);
+    }
   }
 
-  // 4. Historical Approved Bookings (last 30 days) + Current Contested & Pending Requests
+  // 5. Historical Approved Bookings (last 30 days)
+  // Imbalance according to Section 30 & 41:
+  // Ravi (id 2) has 9 approved hours in last 30 days
+  // Asha (id 1) has 0 approved hours in last 30 days
+  // Meera (id 3) has 1 approved hour in last 30 days
+  // 100MHz oscilloscope (id 1) > 85% utilised
+  // FDM 3D printer (id 12) ~5% utilised
   const todayStr = formatLocalDate(new Date());
+
   const insertReq = db.prepare(`
     INSERT INTO booking_requests (
       student_id, equipment_id, project_title, project_description, project_deadline,
-      start_time, end_time, status, required_capabilities, suitability, priority_score,
-      score_breakdown, reviewer_id, reviewer_comment, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      start_time, end_time, status, origin, requirements_json, priority_score,
+      score_breakdown, reviewer_id, reviewer_comment, created_at, updated_at, decided_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'form', ?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))
   `);
 
-  // Generate 25 historical approved bookings over the past 28 days
-  // Spread across equipment:
-  // Alex (id 1) gets ~8 hours
-  // Maya (id 2) gets ~2 hours
-  // Jordan (id 3) gets 0 hours
-  // H100 (id 5) and Keysight Scope (id 1) have heavy bookings -> High utilisation
-  // Optical Breadboard (id 16) has 0 bookings -> Underutilised
-  const historicalSeedPlans = [
-    // Days ago, studentId, equipId, durationHours, title
-    { daysAgo: 26, studentId: 1, equipId: 1, duration: 2, title: 'High-speed ADC Signal Characterization' },
-    { daysAgo: 24, studentId: 1, equipId: 5, duration: 3, title: 'Transformer Model Pretraining Baseline' },
-    { daysAgo: 22, studentId: 1, equipId: 3, duration: 2, title: 'FPGA PCIe Bus Interface Synthesis' },
-    { daysAgo: 20, studentId: 2, equipId: 6, duration: 2, title: 'YOLOv8 Edge Object Detection Benchmarking' },
-    { daysAgo: 18, studentId: 1, equipId: 5, duration: 3, title: 'Attention Layer Distillation Run' },
-    { daysAgo: 16, studentId: 1, equipId: 1, duration: 2, title: 'Clock Jitter Transient Analysis' },
-    { daysAgo: 15, studentId: 2, equipId: 10, duration: 2, title: 'Drone Lightweight Propeller Prototyping' },
-    { daysAgo: 14, studentId: 1, equipId: 5, duration: 4, title: 'Fine-tuning Mistral 7B on Domain Data' },
-    { daysAgo: 12, studentId: 1, equipId: 8, duration: 1, title: 'CAN Bus Message Packet Sniffing' },
-    { daysAgo: 11, studentId: 2, equipId: 6, duration: 2, title: 'Diffusion Latent Denoising Speedup' },
-    { daysAgo: 10, studentId: 1, equipId: 5, duration: 3, title: 'Deep Reinforcement Learning Navigation' },
-    { daysAgo: 9,  studentId: 1, equipId: 2, duration: 2, title: 'Patch Antenna Return Loss S11 Sweep' },
-    { daysAgo: 8,  studentId: 1, equipId: 1, duration: 2, title: 'DDR4 Eye Diagram Margin Testing' },
-    { daysAgo: 7,  studentId: 2, equipId: 7, duration: 2, title: 'Jetson Orin TensorRT Engine Quantization' },
-    { daysAgo: 6,  studentId: 1, equipId: 5, duration: 3, title: 'Contrastive Vision-Language Training' },
-    { daysAgo: 5,  studentId: 1, equipId: 9, duration: 2, title: 'Microfluidic Chamber SLA Master Mold' },
-    { daysAgo: 4,  studentId: 1, equipId: 12, duration: 3, title: 'Cobot Visual Servoing Trajectory' },
-    { daysAgo: 3,  studentId: 2, equipId: 6, duration: 2, title: 'Semantic Segmentation Fine-Tuning' },
-    { daysAgo: 2,  studentId: 1, equipId: 5, duration: 3, title: 'Embedding Model Quantization' },
-    { daysAgo: 2,  studentId: 1, equipId: 1, duration: 2, title: 'Power Rail Ripple Noise Measurement' },
-    { daysAgo: 1,  studentId: 2, equipId: 14, duration: 1, title: 'Protein Concentration UV Absorbance' },
-    { daysAgo: 1,  studentId: 1, equipId: 5, duration: 3, title: 'LoRA Adapter Convergence Experiment' },
-    { daysAgo: 1,  studentId: 1, equipId: 4, duration: 1, title: 'MOSFET Subthreshold Leakage Curve' },
-    { daysAgo: 1,  studentId: 2, equipId: 10, duration: 2, title: 'Robotics Chassis Fast Print' },
-    { daysAgo: 1,  studentId: 1, equipId: 11, duration: 2, title: 'Motor Mount Aluminum Billet Milling' },
+  const dsoId = equipIdMap['dso-100mhz-4ch'];
+  const fdmId = equipIdMap['fdm-3d-printer'];
+  const psuId = equipIdMap['bench-psu-30v-5a'];
+  const rpiId = equipIdMap['raspberry-pi-4'];
+  const espId = equipIdMap['esp32-devkit-kit'];
+  const gpuId = equipIdMap['gpu-workstation'];
+
+  // Seed Ravi with 9 hours of approved bookings (e.g. 3 sessions of 3 hours)
+  const raviBookings = [
+    { daysAgo: 22, equipId: dsoId, hours: 3, title: 'I2C Master Clock Jitter Analysis' },
+    { daysAgo: 14, equipId: dsoId, hours: 3, title: 'Fast Transient Step-Down Voltage Testing' },
+    { daysAgo: 5,  equipId: dsoId, hours: 3, title: 'Differential Signal Ringing Characterization' },
   ];
 
-  for (const item of historicalSeedPlans) {
-    const bookingDate = addDays(todayStr, -item.daysAgo);
+  for (const b of raviBookings) {
+    const bookingDate = addDays(todayStr, -b.daysAgo);
     const startIso = `${bookingDate}T10:00`;
-    const endHour = 10 + item.duration;
-    const endIso = `${bookingDate}T${String(endHour).padStart(2, '0')}:00`;
+    const endIso = `${bookingDate}T${String(10 + b.hours).padStart(2, '0')}:00`;
     const deadline = addDays(bookingDate, 3);
-
     insertReq.run(
-      item.studentId,
-      item.equipId,
-      item.title,
-      'Automated seed historical validation project for campus laboratory resource-sharing.',
+      userMap['ravi@campus.edu'],
+      b.equipId,
+      b.title,
+      'Senior ECE instrumentation lab coursework.',
       deadline,
       startIso,
       endIso,
       'approved',
-      JSON.stringify(['lab-research']),
-      0.9,
-      85,
-      JSON.stringify({ urgency: 80, suitability: 90, fairness: 75, efficiency: 90, total: 84 }),
-      4, // Dr. Sarah Lin approved
-      'Approved: project verified within department syllabus guidelines.'
+      JSON.stringify([{ capability: 'signal-analysis', priority: 'must', reason: 'High-speed signal debugging' }]),
+      75.0,
+      JSON.stringify({ urgency: 80, suitability: 25, fairness: 15, efficiency: 10, total: 75 }),
+      userMap['dr.rao@campus.edu'],
+      'Approved: Laboratory slot assigned.'
     );
   }
 
-  // 5. Active Upcoming COMPETING / CONFLICTED Requests for TOMORROW
-  // Both Student 1 (Alex) and Student 2 (Maya) request the exact same slot on the single H100 Node (id 5)!
-  // This immediately allows judges & reviewers to see the Fair Allocation Engine in action!
-  const tomorrowStr = addDays(todayStr, 1);
-  const slotStart = `${tomorrowStr}T10:00`;
-  const slotEnd = `${tomorrowStr}T13:00`;
+  // Seed Meera with 1 hour
+  const meeraBookings = [
+    { daysAgo: 18, equipId: psuId, hours: 1, title: 'Sensor Voltage Regulator Characterization' }
+  ];
+  for (const b of meeraBookings) {
+    const bookingDate = addDays(todayStr, -b.daysAgo);
+    insertReq.run(
+      userMap['meera@campus.edu'],
+      b.equipId,
+      b.title,
+      'Regulator ripple check.',
+      addDays(bookingDate, 4),
+      `${bookingDate}T11:00`,
+      `${bookingDate}T12:00`,
+      'approved',
+      JSON.stringify([{ capability: 'power-supply', priority: 'must', reason: 'Voltage supply' }]),
+      85.0,
+      JSON.stringify({ urgency: 80, suitability: 25, fairness: 24, efficiency: 10, total: 85 }),
+      userMap['dr.rao@campus.edu'],
+      'Approved.'
+    );
+  }
 
-  // Competing Request 1: Alex Chen (Has 8+ previous hours -> lower fairness)
+  // Other historical bookings spread over 30 days to populate oscilloscope high utilisation and 3D printer low utilisation
+  const additionalBookings = [
+    { daysAgo: 26, studentEmail: 'ravi@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 24, studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 21, studentEmail: 'ravi@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 19, studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 16, studentEmail: 'ravi@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 12, studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 10, studentEmail: 'ravi@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 8,  studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 6,  studentEmail: 'ravi@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 4,  studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 2,  studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    { daysAgo: 1,  studentEmail: 'meera@campus.edu', equipId: dsoId, hours: 3 },
+    // 3D printer: only 1 short session of 2 hours in 30 days (very low utilisation ~5%)
+    { daysAgo: 15, studentEmail: 'ravi@campus.edu', equipId: fdmId, hours: 2 },
+    // GPU and other items
+    { daysAgo: 20, studentEmail: 'meera@campus.edu', equipId: gpuId, hours: 3 },
+    { daysAgo: 13, studentEmail: 'meera@campus.edu', equipId: gpuId, hours: 3 },
+    { daysAgo: 7,  studentEmail: 'ravi@campus.edu',  equipId: espId, hours: 2 },
+    { daysAgo: 3,  studentEmail: 'meera@campus.edu', equipId: rpiId, hours: 2 },
+  ];
+
+  for (const b of additionalBookings) {
+    const bookingDate = addDays(todayStr, -b.daysAgo);
+    insertReq.run(
+      userMap[b.studentEmail] || userMap['meera@campus.edu'],
+      b.equipId,
+      'Historical lab session',
+      'Coursework research.',
+      addDays(bookingDate, 2),
+      `${bookingDate}T13:00`,
+      `${bookingDate}T${String(13 + b.hours).padStart(2, '0')}:00`,
+      'approved',
+      JSON.stringify([]),
+      70.0,
+      JSON.stringify({ urgency: 70, suitability: 20, fairness: 20, efficiency: 10, total: 70 }),
+      userMap['dr.rao@campus.edu'],
+      'Approved.'
+    );
+  }
+
+  // 6. Active Upcoming COMPETING Requests for DEMO (Sections 11, 21.3, 41)
+  // Scenario: On Thursday (or 2 days ahead), 100MHz Oscilloscope (quantity 1) slot 14:00 - 16:00 is contested!
+  // Competing requests:
+  // - Meera: deadline in 2 days (urgent!), 1 prior hour -> Top score ~84 (Recommended Winner!)
+  // - Asha: deadline in 6 days, 0 prior hours -> Score ~66
+  // - Ravi: deadline in 10 days, 9 prior hours -> Score ~47
+  const demoDate = addDays(todayStr, 2);
+  const slotStart = `${demoDate}T14:00`;
+  const slotEnd = `${demoDate}T16:00`;
+
+  // Competing Request 1: Meera Reddy (Urgent: deadline in 2 days)
   insertReq.run(
-    1, // Alex Chen
-    5, // NVIDIA Dual H100
-    'Vision Transformer Large Scale Training',
-    'I need the H100 node to train a 600M parameter ViT for satellite image segmentation before the paper deadline.',
-    addDays(tomorrowStr, 10), // deadline in 10 days
+    userMap['meera@campus.edu'],
+    dsoId,
+    'Fast Transient Glitch Analysis for Embedded Security',
+    'Investigating side-channel power glitching on cryptographic hardware accelerator. Urgent submission in 2 days.',
+    addDays(demoDate, 2),
     slotStart,
     slotEnd,
     'pending',
-    JSON.stringify(['gpu', 'deep-learning', 'pytorch', 'cuda', 'h100']),
-    1.0,
-    71.5,
+    JSON.stringify([
+      { capability: 'signal-analysis', priority: 'must', reason: 'High-speed analog glitch capture' },
+    ]),
+    84.3,
     JSON.stringify({
-      urgency: 50,
-      suitability: 100,
-      fairness: 45, // penalized because Alex already has many hours
-      efficiency: 95,
-      weights: { urgency: 0.35, suitability: 0.30, fairness: 0.20, efficiency: 0.15 },
-      total: 70.75,
-      factors: { deadlineDays: 10, matchedTagsCount: 5, totalRequiredTags: 5, pastAllocatedHours: 8, durationMinutes: 180 }
+      urgency: 34.3,
+      suitability: 25.0,
+      fairness: 19.0,
+      efficiency: 6.0,
+      total: 84.3,
+      factors: { deadlineDays: 2, matchedTagsCount: 1, totalRequiredTags: 1, pastAllocatedHours: 1, durationMinutes: 120 },
     }),
     null,
     null
   );
 
-  // Competing Request 2: Maya Patel (Only 2 previous hours -> top fairness, and urgent deadline!)
+  // Competing Request 2: Asha Sharma (Deadline in 6 days, 0 past hours)
   insertReq.run(
-    2, // Maya Patel
-    5, // NVIDIA Dual H100
-    'Real-time Multimodal Medical Diagnostics LLM',
-    'Urgent clinical validation thesis deadline in 2 days. Need dual H100 NVLink to run distributed multimodal inference evaluation.',
-    addDays(tomorrowStr, 2), // urgent deadline in 2 days!
+    userMap['asha@campus.edu'],
+    dsoId,
+    'IoT Soil-Moisture Sensor Signal Debugging',
+    'I am building an IoT soil-moisture monitor that sends readings to the cloud over WiFi. I need to debug the analog sensor signal and prototype an enclosure. Due in 6 days.',
+    addDays(demoDate, 6),
     slotStart,
     slotEnd,
     'pending',
-    JSON.stringify(['gpu', 'deep-learning', 'pytorch', 'cuda', 'llm']),
-    1.0,
-    91.2,
+    JSON.stringify([
+      { capability: 'signal-analysis', priority: 'must', reason: 'Analog sensor waveform verification' },
+    ]),
+    66.2,
     JSON.stringify({
-      urgency: 100, // very urgent
-      suitability: 100,
-      fairness: 90, // high fairness: underserved student
-      efficiency: 95,
-      weights: { urgency: 0.35, suitability: 0.30, fairness: 0.20, efficiency: 0.15 },
-      total: 92.25,
-      factors: { deadlineDays: 2, matchedTagsCount: 5, totalRequiredTags: 5, pastAllocatedHours: 2, durationMinutes: 180 }
+      urgency: 22.8,
+      suitability: 25.0,
+      fairness: 20.0,
+      efficiency: 6.0,
+      total: 73.8,
+      factors: { deadlineDays: 6, matchedTagsCount: 1, totalRequiredTags: 1, pastAllocatedHours: 0, durationMinutes: 120 },
     }),
     null,
     null
   );
 
-  // Competing Request 3: Jordan Taylor on Keysight Oscilloscope
+  // Competing Request 3: Ravi Patel (Deadline in 10 days, 9 past hours)
   insertReq.run(
-    3, // Jordan Taylor
-    1, // Keysight Oscilloscope
-    'Ultrasonic Mechatronics Transducer Signal Damping',
-    'Measuring transducer ring-down transients for mechatronics senior design capstone.',
-    addDays(tomorrowStr, 4),
-    `${tomorrowStr}T14:00`,
-    `${tomorrowStr}T16:00`,
+    userMap['ravi@campus.edu'],
+    dsoId,
+    'Routine Op-Amp Gain Bandwidth Sweep',
+    'Extended laboratory characterization of active filter passband.',
+    addDays(demoDate, 10),
+    slotStart,
+    slotEnd,
     'pending',
-    JSON.stringify(['oscilloscope', 'signal-analysis', 'hardware-debugging']),
-    1.0,
-    88.5,
+    JSON.stringify([
+      { capability: 'signal-analysis', priority: 'must', reason: 'Filter inspection' },
+    ]),
+    47.1,
     JSON.stringify({
-      urgency: 85,
-      suitability: 100,
-      fairness: 100, // zero past hours
-      efficiency: 90,
-      weights: { urgency: 0.35, suitability: 0.30, fairness: 0.20, efficiency: 0.15 },
-      total: 89.25,
-      factors: { deadlineDays: 4, matchedTagsCount: 3, totalRequiredTags: 3, pastAllocatedHours: 0, durationMinutes: 120 }
+      urgency: 11.4,
+      suitability: 25.0,
+      fairness: 5.0,
+      efficiency: 6.0,
+      total: 47.4,
+      factors: { deadlineDays: 10, matchedTagsCount: 1, totalRequiredTags: 1, pastAllocatedHours: 9, durationMinutes: 120 },
     }),
     null,
     null
   );
 
-  // Audit log initial entry
+  // Initial audit log entry
   db.prepare(`
     INSERT INTO audit_log (actor_id, action, entity, entity_id, detail)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(6, 'SYSTEM_SEED', 'DATABASE', 0, 'Initial laboratory catalogue, demo users and benchmark bookings populated.');
+    VALUES (?, 'SYSTEM_SEED', 'DATABASE', 0, ?)
+  `).run(userMap['admin@campus.edu'], 'Seeded Part III Revision 3 inventory, capabilities, and contested scenario.');
 
-  console.log('Seeding completed successfully!');
+  console.log('Database successfully seeded with 3 departments, 14 items, and 15 capabilities!');
 }
 
 if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')) {
