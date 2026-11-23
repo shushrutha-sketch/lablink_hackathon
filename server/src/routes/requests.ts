@@ -90,11 +90,42 @@ router.get('/requests/mine', authenticate, requireRole('student', 'faculty', 'ad
             : `/media/equipment/${r.image_path}`)
         : null;
 
+      let parsedReqs: any[] = [];
+      if (r.requirements_json) {
+        try {
+          parsedReqs = typeof r.requirements_json === 'string'
+            ? JSON.parse(r.requirements_json)
+            : r.requirements_json;
+        } catch {
+          parsedReqs = [];
+        }
+      }
+
+      const required_capabilities = Array.isArray(parsedReqs)
+        ? parsedReqs.map((item: any) =>
+            typeof item === 'string'
+              ? item
+              : item.capability || item.name || item.tag || String(item)
+          )
+        : [];
+
+      let parsedBreakdown: any = null;
+      if (r.score_breakdown) {
+        try {
+          parsedBreakdown = typeof r.score_breakdown === 'string'
+            ? JSON.parse(r.score_breakdown)
+            : r.score_breakdown;
+        } catch {
+          parsedBreakdown = null;
+        }
+      }
+
       return {
         ...r,
         imageUrl,
-        requirements_json: r.requirements_json ? JSON.parse(r.requirements_json) : [],
-        score_breakdown: r.score_breakdown ? JSON.parse(r.score_breakdown) : null,
+        requirements_json: parsedReqs,
+        required_capabilities,
+        score_breakdown: parsedBreakdown,
         alternatives,
       };
     });

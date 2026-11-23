@@ -104,6 +104,8 @@ export interface BookingRequest {
   end_time: string; // YYYY-MM-DDTHH:mm
   status: RequestStatus;
   required_capabilities: string[];
+  requirements_json?: any;
+  imageUrl?: string | null;
   suitability: number;
   priority_score: number | null;
   score_breakdown: ScoreBreakdown | null;

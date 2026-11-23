@@ -36,6 +36,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="equipment/:id" element={<EquipmentDetail />} />
         <Route path="requests/new" element={<NewRequest />} />
         <Route path="requests" element={<MyRequests />} />
+        <Route path="reservations" element={<MyRequests />} />
 
         {/* Faculty Routes */}
         <Route

@@ -93,6 +93,11 @@ export const MyRequests: React.FC = () => {
           {requests.map(req => {
             const hasBreakdown = req.score_breakdown !== null;
             const isBreakdownOpen = activeBreakdown === req.id;
+            const caps: string[] = Array.isArray(req.required_capabilities) && req.required_capabilities.length > 0
+              ? req.required_capabilities
+              : Array.isArray(req.requirements_json)
+              ? req.requirements_json.map((c: any) => typeof c === 'string' ? c : c.capability || c.name || String(c))
+              : [];
 
             return (
               <div
@@ -101,15 +106,25 @@ export const MyRequests: React.FC = () => {
               >
                 {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
-                        {req.department_name || 'Engineering'}
-                      </span>
-                      <StatusBadge status={req.status} />
+                  <div className="flex items-start gap-3.5">
+                    {req.imageUrl && (
+                      <img
+                        src={req.imageUrl}
+                        alt={req.equipment_name || 'Equipment'}
+                        className="w-16 h-12 object-cover rounded-xl border border-slate-200 shrink-0 hidden sm:block bg-slate-50"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
+                          {req.department_name || 'Engineering'}
+                        </span>
+                        <StatusBadge status={req.status} />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900">{req.equipment_name}</h3>
+                      <p className="text-xs font-semibold text-slate-700">{req.project_title}</p>
                     </div>
-                    <h3 className="text-base font-bold text-slate-900">{req.equipment_name}</h3>
-                    <p className="text-xs font-semibold text-slate-700">{req.project_title}</p>
                   </div>
 
                   <div className="text-right flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2">
@@ -121,7 +136,7 @@ export const MyRequests: React.FC = () => {
                     </div>
                     {req.priority_score !== null && (
                       <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                        Score: {req.priority_score}/100
+                        Score: {typeof req.priority_score === 'number' ? Math.round(req.priority_score) : req.priority_score}/100
                       </span>
                     )}
                   </div>
@@ -131,15 +146,19 @@ export const MyRequests: React.FC = () => {
                 <div className="space-y-2 text-xs">
                   <p className="text-slate-600 leading-relaxed">{req.project_description}</p>
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-slate-400 font-semibold">Required:</span>
-                    {req.required_capabilities.map(c => (
-                      <span
-                        key={c}
-                        className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px]"
-                      >
-                        #{c}
-                      </span>
-                    ))}
+                    {caps.length > 0 && (
+                      <>
+                        <span className="text-slate-400 font-semibold">Required:</span>
+                        {caps.map((c, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px]"
+                          >
+                            #{c}
+                          </span>
+                        ))}
+                      </>
+                    )}
                     <span className="text-slate-400 ml-2">
                       Deadline: <strong className="text-slate-700">{req.project_deadline}</strong>
                     </span>
