@@ -7,7 +7,10 @@
     "dev": "concurrently -k -n \"SERVER,CLIENT\" -c \"blue,magenta\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "build": "npm --prefix server run build && npm --prefix client run build",
     "seed": "npm --prefix server run seed",
-    "test": "npm --prefix server test"
+    "test": "npm --prefix server test",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
+    "lint": "npm run typecheck",
+    "check:images": "tsx server/scripts/check-images.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
