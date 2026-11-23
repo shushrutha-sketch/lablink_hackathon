@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout.js';
 import { RequireRole } from './auth/RequireRole.js';
 import { LoginPage } from './pages/LoginPage.js';
+import { StudentDashboard } from './pages/student/StudentDashboard.js';
 import { Discover } from './pages/student/Discover.js';
 import { ProjectAssistant } from './pages/student/ProjectAssistant.js';
 import { EquipmentDetail } from './pages/student/EquipmentDetail.js';
@@ -26,9 +27,10 @@ export const AppRoutes: React.FC = () => {
           </RequireRole>
         }
       >
-        <Route index element={<Navigate to="/discover" replace />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
 
         {/* Student Routes */}
+        <Route path="dashboard" element={<StudentDashboard />} />
         <Route path="discover" element={<Discover />} />
         <Route path="assistant" element={<ProjectAssistant />} />
         <Route path="equipment/:id" element={<EquipmentDetail />} />

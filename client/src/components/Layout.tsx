@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.js';
 import {
+  LayoutDashboard,
   Compass,
   Sparkles,
   CalendarCheck,
@@ -28,7 +29,7 @@ export const Layout: React.FC = () => {
   const handlePersonaSwitch = async (targetUser: any) => {
     await switchPersona(targetUser);
     setPersonaOpen(false);
-    if (targetUser.role === 'student') navigate('/discover');
+    if (targetUser.role === 'student') navigate('/dashboard');
     else if (targetUser.role === 'faculty') navigate('/review');
     else if (targetUser.role === 'admin') navigate('/admin');
   };
@@ -160,6 +161,10 @@ export const Layout: React.FC = () => {
                 Discovery & Booking
               </p>
               <nav className="space-y-1">
+                <NavLink to="/dashboard" className={navItemClass}>
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </NavLink>
                 <NavLink to="/discover" className={navItemClass}>
                   <Compass className="w-4 h-4" />
                   Explore Catalog

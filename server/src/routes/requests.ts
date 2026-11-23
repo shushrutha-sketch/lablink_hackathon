@@ -116,7 +116,17 @@ router.patch('/requests/:id', authenticate, (req, res, next) => {
   }
 });
 
-// Student cancels own request
+// Student cancels own request (supports both DELETE /requests/:id and POST /requests/:id/cancel)
+router.post('/requests/:id/cancel', authenticate, (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const result = cancelBookingRequest(id, req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/requests/:id', authenticate, (req, res, next) => {
   try {
     const id = Number(req.params.id);

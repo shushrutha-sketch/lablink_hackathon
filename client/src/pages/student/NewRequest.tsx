@@ -21,8 +21,13 @@ export const NewRequest: React.FC = () => {
   const state = (location.state as any) || {};
 
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
-  const [selectedEquipId, setSelectedEquipId] = useState<number>(state.prefillEquipmentId || 1);
+  const [selectedEquipId, setSelectedEquipId] = useState<number | string>(state.prefillEquipmentId || 1);
   const [selectedEquip, setSelectedEquip] = useState<Equipment | null>(null);
+
+  // Substitution state
+  const [substitutedFrom, setSubstitutedFrom] = useState<string | null>(state.substitutedFrom || null);
+  const [substitutionLimitations, setSubstitutionLimitations] = useState<string[]>(state.substitutionLimitations || []);
+  const [substitutionAcknowledged, setSubstitutionAcknowledged] = useState(false);
 
   // Form Fields
   const [projectTitle, setProjectTitle] = useState(state.prefillTitle || '');
@@ -60,15 +65,18 @@ export const NewRequest: React.FC = () => {
     apiRequest<{ items: Equipment[] }>('/equipment?pageSize=50')
       .then(res => {
         setEquipmentList(res.items);
-        const current = res.items.find(e => e.id === selectedEquipId) || res.items[0];
-        if (current) setSelectedEquip(current);
+        const current = res.items.find(e => e.id === selectedEquipId || e.slug === selectedEquipId) || res.items[0];
+        if (current) {
+          setSelectedEquip(current);
+          setSelectedEquipId(current.id);
+        }
       })
       .catch(console.error);
   }, []);
 
   // Update selected equipment
   useEffect(() => {
-    const current = equipmentList.find(e => e.id === selectedEquipId);
+    const current = equipmentList.find(e => e.id === selectedEquipId || e.slug === selectedEquipId);
     if (current) {
       setSelectedEquip(current);
       if (capabilities.length === 0 && current.tags) {
@@ -95,6 +103,14 @@ export const NewRequest: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (substitutedFrom && !substitutionAcknowledged) {
+      setError({
+        message: 'Please acknowledge the technical limitations of the substitute equipment before proceeding.',
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -115,6 +131,13 @@ export const NewRequest: React.FC = () => {
           startTime: startIso,
           endTime: endIso,
           requiredCapabilities: capabilities,
+          ...(substitutedFrom
+            ? {
+                substitutedFromEquipmentId: substitutedFrom,
+                substitutionNote: 'Substitute equipment selected with student acknowledgement',
+                substitutionAcknowledged: 1,
+              }
+            : {}),
         }),
       });
 
@@ -178,6 +201,43 @@ export const NewRequest: React.FC = () => {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+        {/* Substitution Warning & Acknowledgement */}
+        {substitutedFrom && (
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3 animate-in fade-in">
+            <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              Substitute Instrument Selected
+            </div>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              You are requesting this equipment as an alternative because your primary instrument was unavailable.
+              Please review technical limitations and acknowledge them before submitting.
+            </p>
+            {substitutionLimitations && substitutionLimitations.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-900">
+                  Noted Technical Differences / Limitations:
+                </div>
+                <ul className="text-xs text-amber-800 list-disc list-inside space-y-1 bg-amber-100/60 p-2.5 rounded-lg border border-amber-200">
+                  {substitutionLimitations.map((lim, idx) => (
+                    <li key={idx}>{lim}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <label className="flex items-start gap-2.5 text-xs font-semibold text-amber-950 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={substitutionAcknowledged}
+                onChange={e => setSubstitutionAcknowledged(e.target.checked)}
+                className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+              />
+              <span>
+                I acknowledge that this substitute equipment has technical limitations and agree to use it for my experiment.
+              </span>
+            </label>
+          </div>
+        )}
+
         {/* Equipment Selector */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
